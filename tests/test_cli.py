@@ -64,5 +64,5 @@ def test_link_accepts_symlinked_tool_entry(tmp_path: Path, monkeypatch) -> None:
     cmd_link("mcp-demo", str(target_repo), None)
     link_path = target_repo / ".abom" / "mcp-demo"
     assert link_path.is_symlink()
-    assert os.readlink(link_path) == os.path.relpath(source_target.resolve(), link_path.parent)
+    assert os.readlink(link_path) == os.path.relpath(tool_entry, link_path.parent)
     assert link_path.resolve() == source_target.resolve()
