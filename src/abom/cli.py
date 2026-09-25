@@ -40,7 +40,7 @@ def cmd_install(name: str, git_url: str) -> str:
 
 
 def cmd_search(query: str | None) -> list[str]:
-    installed = sorted(p.name for p in tools_dir().iterdir() if p.is_dir())
+    installed = sorted(p.name for p in tools_dir().iterdir() if p.is_dir() or p.is_symlink())
     if query:
         installed = [name for name in installed if query.lower() in name.lower()]
     return installed
@@ -48,9 +48,14 @@ def cmd_search(query: str | None) -> list[str]:
 
 def cmd_remove(name: str) -> str:
     destination = tools_dir() / name
-    if not destination.exists():
+    if not destination.exists() and not destination.is_symlink():
         raise AbomError(f"tool '{name}' is not installed")
-    shutil.rmtree(destination)
+    if destination.is_symlink():
+        destination.unlink()
+    elif destination.is_dir():
+        shutil.rmtree(destination)
+    else:
+        destination.unlink()
     return f"removed {name}"
 
 

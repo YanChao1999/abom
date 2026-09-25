@@ -4,7 +4,7 @@ import os
 import subprocess
 from pathlib import Path
 
-from abom.cli import cmd_install, cmd_link, cmd_remove, cmd_search
+from abom.cli import cmd_install, cmd_link, cmd_remove, cmd_search, tools_dir
 
 
 def _create_local_git_repo(path: Path) -> Path:
@@ -38,3 +38,14 @@ def test_install_search_remove_link(tmp_path: Path, monkeypatch) -> None:
     remove_message = cmd_remove("skill-demo")
     assert remove_message == "removed skill-demo"
     assert cmd_search(None) == []
+
+
+def test_search_and_remove_symlinked_tool_entry(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("ABOM_HOME", str(tmp_path / "abom-home"))
+    missing_target = tmp_path / "missing-target"
+    entry = tools_dir() / "prompt-demo"
+    entry.symlink_to(missing_target)
+
+    assert cmd_search(None) == ["prompt-demo"]
+    assert cmd_remove("prompt-demo") == "removed prompt-demo"
+    assert not entry.exists()
