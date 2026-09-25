@@ -34,6 +34,7 @@ def test_install_search_remove_link(tmp_path: Path, monkeypatch) -> None:
     link_path = target_repo / ".abom" / "skill-demo"
     assert "linked skill-demo" in link_message
     assert link_path.is_symlink()
+    assert link_path.resolve() == (tools_dir() / "skill-demo").resolve()
 
     remove_message = cmd_remove("skill-demo")
     assert remove_message == "removed skill-demo"
@@ -59,4 +60,6 @@ def test_link_accepts_symlinked_tool_entry(tmp_path: Path, monkeypatch) -> None:
     target_repo = tmp_path / "target"
 
     cmd_link("mcp-demo", str(target_repo), None)
-    assert (target_repo / ".abom" / "mcp-demo").is_symlink()
+    link_path = target_repo / ".abom" / "mcp-demo"
+    assert link_path.is_symlink()
+    assert os.readlink(link_path) == os.path.relpath(tool_entry, link_path.parent)
