@@ -66,3 +66,15 @@ def test_link_accepts_symlinked_tool_entry(tmp_path: Path, monkeypatch) -> None:
     assert link_path.is_symlink()
     assert os.readlink(link_path) == os.path.relpath(tool_entry, link_path.parent)
     assert link_path.resolve() == source_target.resolve()
+
+
+def test_link_accepts_file_tool_entry(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("ABOM_HOME", str(tmp_path / "abom-home"))
+    file_entry = tools_dir() / "prompt-file"
+    file_entry.write_text("prompt body", encoding="utf-8")
+    target_repo = tmp_path / "target-file"
+
+    cmd_link("prompt-file", str(target_repo), None)
+    link_path = target_repo / ".abom" / "prompt-file"
+    assert link_path.is_symlink()
+    assert link_path.read_text(encoding="utf-8") == "prompt body"

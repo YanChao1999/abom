@@ -76,7 +76,7 @@ def cmd_link(name: str, target_repo: str, link_name: str | None) -> str:
         raise AbomError(f"link '{destination}' already exists")
 
     link_target = os.path.relpath(source_entry, destination.parent)
-    destination.symlink_to(link_target, target_is_directory=True)
+    destination.symlink_to(link_target, target_is_directory=source_entry.is_dir())
     return f"linked {name} -> {destination}"
 
 
