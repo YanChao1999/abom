@@ -49,3 +49,14 @@ def test_search_and_remove_symlinked_tool_entry(tmp_path: Path, monkeypatch) -> 
     assert cmd_search(None) == ["prompt-demo"]
     assert cmd_remove("prompt-demo") == "removed prompt-demo"
     assert not entry.exists()
+
+
+def test_link_accepts_symlinked_tool_entry(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("ABOM_HOME", str(tmp_path / "abom-home"))
+    source_target = tmp_path / "missing-target"
+    tool_entry = tools_dir() / "mcp-demo"
+    tool_entry.symlink_to(source_target)
+    target_repo = tmp_path / "target"
+
+    cmd_link("mcp-demo", str(target_repo), None)
+    assert (target_repo / ".abom" / "mcp-demo").is_symlink()

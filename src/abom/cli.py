@@ -61,7 +61,7 @@ def cmd_remove(name: str) -> str:
 
 def cmd_link(name: str, target_repo: str, link_name: str | None) -> str:
     source = tools_dir() / name
-    if not source.exists():
+    if not source.exists() and not source.is_symlink():
         raise AbomError(f"tool '{name}' is not installed")
 
     target_root = Path(target_repo).expanduser().resolve()
