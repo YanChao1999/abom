@@ -14,7 +14,7 @@ class AbomError(Exception):
 
 def abom_home() -> Path:
     root = os.environ.get("ABOM_HOME")
-    return Path(root).expanduser() if root else Path.home() / ".abom"
+    return (Path(root).expanduser() if root else Path.home() / ".abom").resolve()
 
 
 def tools_dir() -> Path:
@@ -33,7 +33,7 @@ def run_git(args: list[str], cwd: Path | None = None) -> None:
 
 def cmd_install(name: str, git_url: str) -> str:
     destination = tools_dir() / name
-    if destination.exists():
+    if destination.exists() or destination.is_symlink():
         raise AbomError(f"tool '{name}' already installed")
     run_git(["clone", "--depth", "1", git_url, str(destination)])
     return f"installed {name} -> {destination}"
