@@ -14,7 +14,7 @@ class AbomError(Exception):
 
 def abom_home() -> Path:
     root = os.environ.get("ABOM_HOME")
-    return (Path(root).expanduser() if root else Path.home() / ".abom").resolve()
+    return (Path(root).expanduser() if root else Path.home() / ".abom").resolve(strict=False)
 
 
 def tools_dir() -> Path:
@@ -60,9 +60,10 @@ def cmd_remove(name: str) -> str:
 
 
 def cmd_link(name: str, target_repo: str, link_name: str | None) -> str:
-    source = tools_dir() / name
-    if not source.exists() and not source.is_symlink():
+    source_entry = tools_dir() / name
+    if not source_entry.exists() and not source_entry.is_symlink():
         raise AbomError(f"tool '{name}' is not installed")
+    source = source_entry.resolve(strict=False)
 
     target_root = Path(target_repo).expanduser().resolve()
     target_root.mkdir(parents=True, exist_ok=True)
