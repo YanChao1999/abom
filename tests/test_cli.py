@@ -4,7 +4,9 @@ import os
 import subprocess
 from pathlib import Path
 
-from abom.cli import cmd_install, cmd_link, cmd_remove, cmd_search, tools_dir
+import pytest
+
+from abom.cli import AbomError, cmd_install, cmd_link, cmd_remove, cmd_search, tools_dir
 
 
 def _create_local_git_repo(path: Path) -> Path:
@@ -23,6 +25,7 @@ def test_install_search_remove_link(tmp_path: Path, monkeypatch) -> None:
 
     source_repo = _create_local_git_repo(tmp_path / "source-repo")
     target_repo = tmp_path / "target"
+    target_repo.mkdir()
 
     install_message = cmd_install("skill-demo", str(source_repo))
     assert "installed skill-demo" in install_message
@@ -60,6 +63,7 @@ def test_link_accepts_symlinked_tool_entry(tmp_path: Path, monkeypatch) -> None:
     tool_entry = tools_dir() / "mcp-demo"
     tool_entry.symlink_to(source_target)
     target_repo = tmp_path / "target"
+    target_repo.mkdir()
 
     cmd_link("mcp-demo", str(target_repo), None)
     link_path = target_repo / ".abom" / "mcp-demo"
@@ -73,8 +77,19 @@ def test_link_accepts_file_tool_entry(tmp_path: Path, monkeypatch) -> None:
     file_entry = tools_dir() / "prompt-file"
     file_entry.write_text("prompt body", encoding="utf-8")
     target_repo = tmp_path / "target-file"
+    target_repo.mkdir()
 
     cmd_link("prompt-file", str(target_repo), None)
     link_path = target_repo / ".abom" / "prompt-file"
     assert link_path.is_symlink()
     assert link_path.read_text(encoding="utf-8") == "prompt body"
+
+
+def test_link_requires_existing_target_repo(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("ABOM_HOME", str(tmp_path / "abom-home"))
+    source_target = tmp_path / "real-tool"
+    source_target.mkdir()
+    (tools_dir() / "skill-demo").symlink_to(source_target)
+
+    with pytest.raises(AbomError):
+        cmd_link("skill-demo", str(tmp_path / "missing-target"), None)

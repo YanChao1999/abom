@@ -65,7 +65,10 @@ def cmd_link(name: str, target_repo: str, link_name: str | None) -> str:
         raise AbomError(f"tool '{name}' is not installed")
 
     target_root = Path(target_repo).expanduser()
-    target_root.mkdir(parents=True, exist_ok=True)
+    if not target_root.exists():
+        raise AbomError(f"target repository '{target_root}' does not exist")
+    if not target_root.is_dir():
+        raise AbomError(f"target repository '{target_root}' is not a directory")
     target_root = target_root.resolve(strict=False)
     links_dir = target_root / ".abom"
     links_dir.mkdir(exist_ok=True)
@@ -76,7 +79,9 @@ def cmd_link(name: str, target_repo: str, link_name: str | None) -> str:
         raise AbomError(f"link '{destination}' already exists")
 
     link_target = os.path.relpath(source_entry, destination.parent)
-    target_is_directory = source_entry.is_dir() and not source_entry.is_symlink()
+    target_is_directory = (
+        source_entry.resolve(strict=False).is_dir() if source_entry.is_symlink() else source_entry.is_dir()
+    )
     destination.symlink_to(link_target, target_is_directory=target_is_directory)
     return f"linked {name} -> {destination}"
 
