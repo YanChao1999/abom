@@ -1,0 +1,88 @@
+{
+  "schema": "abom.catalog/v1",
+  "recipes": [
+    {
+      "name": "anthropics-skill-creator",
+      "kind": "skill",
+      "description": "Create new skills, improve existing ones, and measure how well they trigger.",
+      "homepage": "https://github.com/anthropics/skills",
+      "license": "Apache-2.0",
+      "source": {
+        "git": "https://github.com/anthropics/skills.git",
+        "ref": "main",
+        "path": "skills/skill-creator"
+      }
+    },
+    {
+      "name": "f-prompts",
+      "kind": "prompt",
+      "description": "Community prompt collection from prompts.chat, formerly Awesome ChatGPT Prompts.",
+      "homepage": "https://github.com/f/prompts.chat",
+      "license": "CC0-1.0",
+      "source": {
+        "git": "https://github.com/f/prompts.chat.git",
+        "ref": "main",
+        "path": "PROMPTS.md"
+      }
+    },
+    {
+      "name": "modelcontextprotocol-filesystem",
+      "kind": "mcp",
+      "description": "Reference MCP server for sandboxed filesystem access.",
+      "homepage": "https://github.com/modelcontextprotocol/servers",
+      "license": "Apache-2.0 OR MIT",
+      "source": {
+        "git": "https://github.com/modelcontextprotocol/servers.git",
+        "ref": "main",
+        "path": "src/filesystem"
+      }
+    },
+    {
+      "name": "f-prompts-chat",
+      "kind": "package",
+      "description": "prompts.chat toolkit for building, validating, and parsing prompts.",
+      "homepage": "https://github.com/f/prompts.chat",
+      "license": "MIT",
+      "source": {
+        "git": "https://github.com/f/prompts.chat.git",
+        "ref": "main",
+        "path": "packages/prompts.chat"
+      }
+    },
+    {
+      "name": "abom-skill",
+      "kind": "skill",
+      "description": "Install, check, and link agent skills, prompts, MCP servers, and packages with the abom CLI.",
+      "homepage": "https://github.com/YanChao1999/abom",
+      "license": "MIT",
+      "source": {
+        "git": "https://github.com/YanChao1999/abom.git",
+        "ref": "main",
+        "path": "skills/abom"
+      }
+    },
+    {
+      "name": "abom-package",
+      "kind": "package",
+      "description": "abom CLI package from GitHub. Install it, then list the recipe catalog.",
+      "homepage": "https://github.com/YanChao1999/abom",
+      "license": "MIT",
+      "source": {
+        "git": "https://github.com/YanChao1999/abom.git",
+        "ref": "main"
+      }
+    },
+    {
+      "name": "abom-mcp",
+      "kind": "mcp",
+      "description": "MCP server that lists, checks, installs, and links abom recipes.",
+      "homepage": "https://github.com/YanChao1999/abom",
+      "license": "MIT",
+      "source": {
+        "git": "https://github.com/YanChao1999/abom.git",
+        "ref": "main",
+        "path": "mcp"
+      }
+    }
+  ]
+}

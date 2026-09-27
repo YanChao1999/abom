@@ -1,0 +1,26 @@
+name: Recipe check
+
+on:
+  pull_request:
+    paths:
+      - "src/abom/recipes.json"
+      - "scripts/check_new_recipes.py"
+      - "src/abom/recipe.py"
+
+jobs:
+  pull-check:
+    name: pull-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Fetch the base branch
+        run: git fetch origin "${{ github.base_ref }}"
+      - name: Validate added and updated recipes
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: python scripts/check_new_recipes.py

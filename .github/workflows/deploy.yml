@@ -1,0 +1,37 @@
+name: Deploy
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    name: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check the tag matches the package version
+        run: |
+          python <<'PY'
+          import os
+          import pathlib
+          import re
+
+          text = pathlib.Path("pyproject.toml").read_text(encoding="utf-8")
+          version = re.search(r'(?m)^version = "(.+)"', text).group(1)
+          tag = os.environ["GITHUB_REF_NAME"].removeprefix("v")
+          if version != tag:
+              raise SystemExit(f"tag {tag} does not match version {version}")
+          PY
+      - run: pip install build
+      - run: python -m build
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --notes "abom $GITHUB_REF_NAME"
