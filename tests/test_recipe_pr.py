@@ -39,6 +39,21 @@ def test_added_recipe_is_reported() -> None:
     assert changes[0][1].license == "MIT"
 
 
+def test_pages_build_lists_catalog_recipes() -> None:
+    import importlib.util
+
+    path = Path(__file__).resolve().parents[1] / "scripts" / "build_pages.py"
+    spec = importlib.util.spec_from_file_location("build_pages", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    module.main()
+    page = (Path(__file__).resolve().parents[1] / "site" / "index.html").read_text(encoding="utf-8")
+    assert "abom-skill" in page
+    assert "pip install abom" in page
+    assert "Agent bill of materials" in page
+
+
 def test_new_recipe_with_an_unknown_license_fails() -> None:
     head = _catalog([_entry("abom-skill", license_id="proprietary")])
     with pytest.raises(RecipeError, match="proprietary"):

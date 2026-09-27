@@ -5,11 +5,16 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "abom"
 version = "0.0.1"
-description = "Agent material manager CLI"
+description = "Agent bill of materials manager for skills, prompts, MCP servers, and packages."
 readme = "README.md"
 license = {file = "LICENSE"}
 requires-python = ">=3.10"
 dependencies = []
+
+[project.urls]
+Homepage = "https://yanchao1999.github.io/abom/"
+Repository = "https://github.com/YanChao1999/abom"
+Issues = "https://github.com/YanChao1999/abom/issues"
 
 [project.scripts]
 abom = "abom.cli:main"
