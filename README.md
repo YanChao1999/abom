@@ -4,11 +4,17 @@
 
 ## Package management
 
-Install the package from GitHub, then list the catalog:
+Homepage: <https://yanchao1999.github.io/abom/>
 
 ```bash
-pip install "git+https://github.com/YanChao1999/abom.git"
+pip install abom
 abom recipes
+```
+
+TestPyPI:
+
+```bash
+pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ abom
 ```
 
 For local development:
@@ -21,7 +27,9 @@ uv run ruff check .
 uv run pytest
 ```
 
-Version 0.0.1. GitHub Actions runs format, lint, and test on every pull request. Pushing a `v0.0.1` tag builds the package and publishes a GitHub release. A pull request that adds or edits `src/abom/recipes.json` also runs the recipe pull-check, which rejects an invalid name, kind, git URL, or license.
+Version 0.0.1. GitHub Actions runs format, lint, and test on every pull request. A pull request that adds or edits `src/abom/recipes.json` also runs the recipe pull-check. Pushing a `v*` tag publishes a GitHub release, then TestPyPI, then PyPI. Pushes to `main` publish the GitHub Pages site.
+
+Trusted publishing uses the GitHub environments `testpypi` and `pypi`. On each index, add this repository as a trusted publisher: workflow `deploy.yml`, and the matching environment name. The PyPI project name is `abom`.
 
 ## Recipes
 

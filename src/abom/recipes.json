@@ -53,7 +53,7 @@
       "name": "abom-skill",
       "kind": "skill",
       "description": "Install, check, and link agent skills, prompts, MCP servers, and packages with the abom CLI.",
-      "homepage": "https://github.com/YanChao1999/abom",
+      "homepage": "https://yanchao1999.github.io/abom/",
       "license": "MIT",
       "source": {
         "git": "https://github.com/YanChao1999/abom.git",
@@ -65,7 +65,7 @@
       "name": "abom-package",
       "kind": "package",
       "description": "abom CLI package from GitHub. Install it, then list the recipe catalog.",
-      "homepage": "https://github.com/YanChao1999/abom",
+      "homepage": "https://yanchao1999.github.io/abom/",
       "license": "MIT",
       "source": {
         "git": "https://github.com/YanChao1999/abom.git",
@@ -76,7 +76,7 @@
       "name": "abom-mcp",
       "kind": "mcp",
       "description": "MCP server that lists, checks, installs, and links abom recipes.",
-      "homepage": "https://github.com/YanChao1999/abom",
+      "homepage": "https://yanchao1999.github.io/abom/",
       "license": "MIT",
       "source": {
         "git": "https://github.com/YanChao1999/abom.git",
