@@ -49,7 +49,7 @@ Append one object to the `recipes` list. The name is `<publisher>-<material>` an
 
 ## Checks
 
-`abom check` and `abom install` reject a checkout that does not match its kind, a clone URL whose scheme can run a helper, a symlink that leaves the checkout, or a skill, prompt, or package lifecycle script that pipes a download into a shell. The checkout must also include a license file whose text satisfies the recipe `license` field. Fix the recipe or the upstream material before installing.
+`abom check` and `abom install` reject a checkout that does not match its kind, a clone URL whose scheme can run a helper, a symlink that leaves the checkout, a skill or prompt that contains a prompt-injection instruction, or a skill, prompt, or package lifecycle script that pipes a download into a shell. The checkout must also include a license file whose text satisfies the recipe `license` field. A pull request that changes a recipe asks Copilot to review the cloned material for those compromises. Fix the recipe or the upstream material before installing.
 
 Install this package from GitHub with `pip install git+https://github.com/YanChao1999/abom.git`, then run `abom recipes`.
 

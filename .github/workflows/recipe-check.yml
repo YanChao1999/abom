@@ -5,7 +5,9 @@ on:
     paths:
       - "src/abom/recipes.json"
       - "scripts/check_new_recipes.py"
+      - "scripts/copilot_recipe_review.py"
       - "src/abom/recipe.py"
+      - "src/abom/check.py"
 
 jobs:
   pull-check:
@@ -24,3 +26,26 @@ jobs:
         env:
           BASE_REF: ${{ github.base_ref }}
         run: python scripts/check_new_recipes.py
+
+  copilot-recipe:
+    name: copilot-recipe
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      copilot-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Fetch the base branch
+        run: git fetch origin "${{ github.base_ref }}"
+      - name: Install Copilot CLI
+        run: npm install -g @github/copilot
+      - name: Review added and updated recipes with Copilot
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python scripts/copilot_recipe_review.py

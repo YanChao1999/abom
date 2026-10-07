@@ -96,6 +96,9 @@ abom link anthropics-skill-creator /path/to/project
 - git hooks and filesystem monitors from the cloned repo are not executed
 - a symlink that points outside the checkout is rejected
 - a prompt, skill, or package lifecycle script that pipes a download into a shell is rejected
+- a skill or prompt that tells the agent to ignore or disregard earlier instructions is rejected
+
+A pull request that adds or edits a recipe also asks Copilot, with no checkout tools enabled, to review the cloned material for prompt injection, hidden instructions, secret exfiltration, and remote-shell install hooks. The job fails when that review does not pass.
 
 ## Commands
 
