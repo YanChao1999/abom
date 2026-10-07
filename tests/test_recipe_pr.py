@@ -51,7 +51,7 @@ def test_pages_build_lists_catalog_recipes() -> None:
     page = (Path(__file__).resolve().parents[1] / "site" / "index.html").read_text(encoding="utf-8")
     assert "abom-skill" in page
     assert "pip install abom" in page
-    assert "abom install anthropics-skill-creator" in page
+    assert "abom install abom-skill" in page
     assert "Install an agent tool with one command" in page
 
 
