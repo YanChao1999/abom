@@ -27,7 +27,7 @@ uv run ruff check .
 uv run pytest
 ```
 
-Version 0.0.2. GitHub Actions runs format, lint, and test on every pull request. A pull request that adds or edits `src/abom/recipes.json` also runs the recipe pull-check. Pushing a `v*` tag publishes a GitHub release, TestPyPI, and PyPI from the same build. Pushes to `main` publish the GitHub Pages site.
+Version 0.0.3. GitHub Actions runs format, lint, and test on every pull request. A pull request that adds or edits `src/abom/recipes.json` also runs the recipe pull-check. Pushing a `v*` tag publishes a GitHub release, TestPyPI, and PyPI from the same build. Pushes to `main` publish the GitHub Pages site.
 
 Trusted publishing uses the GitHub environments `testpypi` and `pypi`. On each index, add this repository as a trusted publisher: workflow `deploy.yml`, and the matching environment name. The PyPI project name is `abom`.
 
