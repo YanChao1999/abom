@@ -45,7 +45,7 @@ def _page(rows: str) -> str:
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>abom</title>
-  <meta name="description" content="Install an agent tool with one command, then list, check, and remove it from the same place.">
+  <meta name="description" content="Install an agent tool with one command, manage it, and link it into another project.">
   <link rel="canonical" href="{HOME}">
   <style>
     :root {{
@@ -83,7 +83,7 @@ def _page(rows: str) -> str:
     }}
     .panels {{
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 1fr 1fr 1fr;
       gap: 16px;
       margin-bottom: 36px;
     }}
@@ -100,7 +100,7 @@ def _page(rows: str) -> str:
       color: var(--muted);
       font-size: 16px;
     }}
-    @media (max-width: 700px) {{
+    @media (max-width: 860px) {{
       .panels {{ grid-template-columns: 1fr; }}
       h1 {{ font-size: 44px; }}
     }}
@@ -144,7 +144,7 @@ def _page(rows: str) -> str:
 <body>
   <main>
     <h1>ab<span>om</span></h1>
-    <p class="lede">Install an agent tool with one command, then manage it in the same place.</p>
+    <p class="lede">Install an agent tool with one command, manage it, and link it into another project.</p>
     <div class="panels">
       <section>
         <h2>Install</h2>
@@ -158,6 +158,12 @@ abom install abom-skill</code></pre>
         <pre><code>abom recipes
 abom check abom-skill
 abom remove abom-skill</code></pre>
+      </section>
+      <section>
+        <h2>Outside</h2>
+        <p>Link a tool into another project, or install a checkout that lives outside this one.</p>
+        <pre><code>abom link abom-skill ~/other-project
+abom install extra-tool ~/outside-tool</code></pre>
       </section>
     </div>
     <p class="lede">Skills, prompts, MCP servers, and packages.</p>
