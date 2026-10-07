@@ -53,6 +53,7 @@ def test_pages_build_lists_catalog_recipes() -> None:
     assert "pip install abom" in page
     assert "abom install abom-skill" in page
     assert "Install an agent tool with one command" in page
+    assert "abom link abom-skill ~/other-project" in page
 
 
 def test_new_recipe_with_an_unknown_license_fails() -> None:
