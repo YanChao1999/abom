@@ -109,7 +109,8 @@ def _page(rows: str) -> str:
     }}
     pre {{
       margin: 8px 0 0;
-      white-space: pre-wrap;
+      overflow-x: auto;
+      white-space: pre;
     }}
     h2 {{
       font-size: 22px;
@@ -149,14 +150,14 @@ def _page(rows: str) -> str:
         <h2>Install</h2>
         <p>One command names the tool. The git URL stays in the catalog.</p>
         <pre><code>pip install abom
-abom install anthropics-skill-creator</code></pre>
+abom install abom-skill</code></pre>
       </section>
       <section>
         <h2>Manage</h2>
         <p>List the catalog, check a tool, and remove it when you are done.</p>
         <pre><code>abom recipes
-abom check anthropics-skill-creator
-abom remove anthropics-skill-creator</code></pre>
+abom check abom-skill
+abom remove abom-skill</code></pre>
       </section>
     </div>
     <p class="lede">Skills, prompts, MCP servers, and packages.</p>
