@@ -16,6 +16,14 @@ _REMOTE_SHELL = re.compile(
     r"|/dev/tcp/",
     re.IGNORECASE,
 )
+# Instruction-override lines. The material is data for an agent, so these are treated as hostile.
+_PROMPT_INJECTION = re.compile(
+    r"ignore\s+(?:all\s+)?(?:previous|prior|above)\s+instructions"
+    r"|disregard\s+(?:all\s+)?(?:previous|prior|above)\s+instructions",
+    re.IGNORECASE,
+)
+_EXCERPT_BYTES = 6_000
+_EXCERPT_FILES = 3
 _LIFECYCLE_SCRIPTS = ("preinstall", "install", "postinstall", "prepare", "preprepare", "prepublish")
 _PROMPT_SUFFIXES = {".md", ".markdown", ".txt", ".prompt"}
 _TEXT_SCAN_BYTES = 256_000
@@ -44,6 +52,20 @@ def inspect_checkout(checkout: Path) -> CheckReport:
     """Scan an ad-hoc clone that has no recipe kind."""
     findings = _symlink_findings(checkout, checkout)
     return CheckReport(not findings, tuple(findings))
+
+
+def material_excerpt(recipe: Recipe, checkout: Path) -> str:
+    """Bounded text Copilot can review without a tool that reads the checkout."""
+    material = checkout if recipe.path is None else checkout / recipe.path
+    lines = [
+        f"name: {recipe.name}",
+        f"kind: {recipe.kind}",
+        f"declared license: {recipe.license}",
+    ]
+    for path in _excerpt_files(recipe.kind, material):
+        text = _read_text(path) or ""
+        lines.append(f"\n--- file: {path.name} ---\n{text[:_EXCERPT_BYTES]}")
+    return "\n".join(lines)
 
 
 def format_report(report: CheckReport) -> str:
@@ -80,6 +102,8 @@ def _skill_findings(material: Path) -> list[str]:
         findings.append("SKILL.md frontmatter must include name and description")
     if _REMOTE_SHELL.search(text):
         findings.append("SKILL.md contains a remote shell command")
+    if _PROMPT_INJECTION.search(text):
+        findings.append("SKILL.md contains a prompt-injection instruction")
     return findings
 
 
@@ -97,6 +121,8 @@ def _prompt_findings(material: Path) -> list[str]:
             findings.append(f"prompt file is empty: {path.name}")
         elif _REMOTE_SHELL.search(text):
             findings.append(f"prompt file contains a remote shell command: {path.name}")
+        elif _PROMPT_INJECTION.search(text):
+            findings.append(f"prompt file contains a prompt-injection instruction: {path.name}")
     return findings
 
 
@@ -158,6 +184,26 @@ def _package_json_findings(path: Path, *, required: bool) -> list[str]:
         if _REMOTE_SHELL.search(command):
             findings.append(f"package.json {key} script looks like a remote shell: {command}")
     return findings
+
+
+def _excerpt_files(kind: str, material: Path) -> list[Path]:
+    if kind == "skill" and (material / "SKILL.md").is_file():
+        return [material / "SKILL.md"]
+    if kind == "prompt":
+        return _prompt_files(material)[:_EXCERPT_FILES]
+    if material.is_file():
+        return [material]
+    preferred = (
+        "SKILL.md",
+        "package.json",
+        "pyproject.toml",
+        "README.md",
+        "index.ts",
+        "index.js",
+        "server.py",
+        "main.py",
+    )
+    return [material / name for name in preferred if (material / name).is_file()][:_EXCERPT_FILES]
 
 
 def _prompt_files(material: Path) -> list[Path]:
