@@ -56,7 +56,7 @@ abom install anthropics-skill-creator
 }
 ```
 
-The catalog ships one of each kind:
+The catalog includes these recipes:
 
 | Name | Kind | Source |
 | --- | --- | --- |
@@ -64,9 +64,17 @@ The catalog ships one of each kind:
 | `abom-skill` | skill | [YanChao1999/abom](https://github.com/YanChao1999/abom) `skills/abom` |
 | `abom-mcp` | mcp | [YanChao1999/abom](https://github.com/YanChao1999/abom) `mcp` |
 | `anthropics-skill-creator` | skill | [anthropics/skills](https://github.com/anthropics/skills) `skills/skill-creator` |
+| `anthropics-frontend-design` | skill | [anthropics/skills](https://github.com/anthropics/skills) `skills/frontend-design` |
+| `anthropics-mcp-builder` | skill | [anthropics/skills](https://github.com/anthropics/skills) `skills/mcp-builder` |
+| `anthropics-webapp-testing` | skill | [anthropics/skills](https://github.com/anthropics/skills) `skills/webapp-testing` |
 | `f-prompts` | prompt | [f/prompts.chat](https://github.com/f/prompts.chat) `PROMPTS.md` |
+| `danielmiessler-summarize` | prompt | [danielmiessler/fabric](https://github.com/danielmiessler/fabric) `data/patterns/summarize/system.md` |
 | `modelcontextprotocol-filesystem` | mcp | [modelcontextprotocol/servers](https://github.com/modelcontextprotocol/servers) `src/filesystem` |
+| `modelcontextprotocol-memory` | mcp | [modelcontextprotocol/servers](https://github.com/modelcontextprotocol/servers) `src/memory` |
+| `modelcontextprotocol-fetch` | mcp | [modelcontextprotocol/servers](https://github.com/modelcontextprotocol/servers) `src/fetch` |
+| `modelcontextprotocol-git` | mcp | [modelcontextprotocol/servers](https://github.com/modelcontextprotocol/servers) `src/git` |
 | `f-prompts-chat` | package | [f/prompts.chat](https://github.com/f/prompts.chat) `packages/prompts.chat` |
+| `modelcontextprotocol-python-sdk` | package | [modelcontextprotocol/python-sdk](https://github.com/modelcontextprotocol/python-sdk) repository root |
 
 ```bash
 abom recipes

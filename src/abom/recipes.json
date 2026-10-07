@@ -14,6 +14,42 @@
       }
     },
     {
+      "name": "anthropics-frontend-design",
+      "kind": "skill",
+      "description": "Guidance for distinctive visual design when building or reshaping a user interface.",
+      "homepage": "https://github.com/anthropics/skills/tree/main/skills/frontend-design",
+      "license": "Apache-2.0",
+      "source": {
+        "git": "https://github.com/anthropics/skills.git",
+        "ref": "main",
+        "path": "skills/frontend-design"
+      }
+    },
+    {
+      "name": "anthropics-mcp-builder",
+      "kind": "skill",
+      "description": "Guide for creating MCP servers that let models call external services.",
+      "homepage": "https://github.com/anthropics/skills/tree/main/skills/mcp-builder",
+      "license": "Apache-2.0",
+      "source": {
+        "git": "https://github.com/anthropics/skills.git",
+        "ref": "main",
+        "path": "skills/mcp-builder"
+      }
+    },
+    {
+      "name": "anthropics-webapp-testing",
+      "kind": "skill",
+      "description": "Test local web applications with Playwright, including screenshots and browser logs.",
+      "homepage": "https://github.com/anthropics/skills/tree/main/skills/webapp-testing",
+      "license": "Apache-2.0",
+      "source": {
+        "git": "https://github.com/anthropics/skills.git",
+        "ref": "main",
+        "path": "skills/webapp-testing"
+      }
+    },
+    {
       "name": "f-prompts",
       "kind": "prompt",
       "description": "Community prompt collection from prompts.chat, formerly Awesome ChatGPT Prompts.",
@@ -23,6 +59,18 @@
         "git": "https://github.com/f/prompts.chat.git",
         "ref": "main",
         "path": "PROMPTS.md"
+      }
+    },
+    {
+      "name": "danielmiessler-summarize",
+      "kind": "prompt",
+      "description": "Fabric prompt that turns source content into a short Markdown summary.",
+      "homepage": "https://github.com/danielmiessler/fabric/blob/main/data/patterns/summarize/system.md",
+      "license": "MIT",
+      "source": {
+        "git": "https://github.com/danielmiessler/fabric.git",
+        "ref": "main",
+        "path": "data/patterns/summarize/system.md"
       }
     },
     {
@@ -38,6 +86,42 @@
       }
     },
     {
+      "name": "modelcontextprotocol-memory",
+      "kind": "mcp",
+      "description": "MCP server that stores memory as a knowledge graph.",
+      "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/memory",
+      "license": "Apache-2.0 OR MIT",
+      "source": {
+        "git": "https://github.com/modelcontextprotocol/servers.git",
+        "ref": "main",
+        "path": "src/memory"
+      }
+    },
+    {
+      "name": "modelcontextprotocol-fetch",
+      "kind": "mcp",
+      "description": "MCP server that fetches web pages and converts them for models.",
+      "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/fetch",
+      "license": "MIT",
+      "source": {
+        "git": "https://github.com/modelcontextprotocol/servers.git",
+        "ref": "main",
+        "path": "src/fetch"
+      }
+    },
+    {
+      "name": "modelcontextprotocol-git",
+      "kind": "mcp",
+      "description": "MCP server that reads and searches Git repositories.",
+      "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/git",
+      "license": "MIT",
+      "source": {
+        "git": "https://github.com/modelcontextprotocol/servers.git",
+        "ref": "main",
+        "path": "src/git"
+      }
+    },
+    {
       "name": "f-prompts-chat",
       "kind": "package",
       "description": "prompts.chat toolkit for building, validating, and parsing prompts.",
@@ -47,6 +131,17 @@
         "git": "https://github.com/f/prompts.chat.git",
         "ref": "main",
         "path": "packages/prompts.chat"
+      }
+    },
+    {
+      "name": "modelcontextprotocol-python-sdk",
+      "kind": "package",
+      "description": "Official Python SDK for Model Context Protocol servers and clients.",
+      "homepage": "https://github.com/modelcontextprotocol/python-sdk",
+      "license": "MIT",
+      "source": {
+        "git": "https://github.com/modelcontextprotocol/python-sdk.git",
+        "ref": "main"
       }
     },
     {
