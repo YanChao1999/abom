@@ -45,7 +45,7 @@ def _page(rows: str) -> str:
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>abom</title>
-  <meta name="description" content="Agent bill of materials manager for skills, prompts, MCP servers, and packages.">
+  <meta name="description" content="Install an agent tool with one command, then list, check, and remove it from the same place.">
   <link rel="canonical" href="{HOME}">
   <style>
     :root {{
@@ -81,11 +81,28 @@ def _page(rows: str) -> str:
       margin: 0 0 28px;
       color: var(--muted);
     }}
-    .install {{
+    .panels {{
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 36px;
+    }}
+    .panels section {{
       background: var(--card);
       border: 1px solid var(--line);
       padding: 16px 18px;
-      margin-bottom: 36px;
+    }}
+    .panels h2 {{
+      margin: 0 0 8px;
+    }}
+    .panels p {{
+      margin: 0 0 8px;
+      color: var(--muted);
+      font-size: 16px;
+    }}
+    @media (max-width: 700px) {{
+      .panels {{ grid-template-columns: 1fr; }}
+      h1 {{ font-size: 44px; }}
     }}
     code, pre {{
       font-family: "IBM Plex Mono", "ui-monospace", "SFMono-Regular", Menlo, Consolas, monospace;
@@ -126,12 +143,23 @@ def _page(rows: str) -> str:
 <body>
   <main>
     <h1>ab<span>om</span></h1>
-    <p class="lede">Agent bill of materials manager for skills, prompts, MCP servers, and packages. Install a recipe by name. The git URL stays in the catalog.</p>
-    <section class="install">
-      <div>Install</div>
-      <pre><code>pip install abom
-abom recipes</code></pre>
-    </section>
+    <p class="lede">Install an agent tool with one command, then manage it in the same place.</p>
+    <div class="panels">
+      <section>
+        <h2>Install</h2>
+        <p>One command names the tool. The git URL stays in the catalog.</p>
+        <pre><code>pip install abom
+abom install anthropics-skill-creator</code></pre>
+      </section>
+      <section>
+        <h2>Manage</h2>
+        <p>List the catalog, check a tool, and remove it when you are done.</p>
+        <pre><code>abom recipes
+abom check anthropics-skill-creator
+abom remove anthropics-skill-creator</code></pre>
+      </section>
+    </div>
+    <p class="lede">Skills, prompts, MCP servers, and packages.</p>
     <h2>Recipes</h2>
     <table>
       <thead>
