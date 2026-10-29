@@ -44,15 +44,48 @@ def bundled_catalog_path() -> Path:
     return Path(__file__).resolve().parent / "recipes.json"
 
 
+def private_catalogs_dir() -> Path:
+    root = os.environ.get("ABOM_HOME")
+    home = Path(root).expanduser() if root else Path.home() / ".abom"
+    return home / "catalogs"
+
+
 def catalog_path() -> Path:
+    """Primary catalog path. Prefer load_catalog() for the merged view."""
     override = os.environ.get("ABOM_CATALOG")
     if override:
         return Path(override).expanduser()
     return bundled_catalog_path()
 
 
+def catalog_paths() -> list[Path]:
+    """Catalog files in merge order. Later files override earlier names."""
+    override = os.environ.get("ABOM_CATALOG")
+    if override:
+        return [Path(override).expanduser()]
+
+    paths = [bundled_catalog_path()]
+    private = private_catalogs_dir()
+    if private.is_dir():
+        paths.extend(sorted(private.glob("*.json")))
+    extra = os.environ.get("ABOM_EXTRA_CATALOGS", "")
+    for part in extra.split(os.pathsep):
+        part = part.strip()
+        if part:
+            paths.append(Path(part).expanduser())
+    return paths
+
+
 def load_catalog(path: Path | None = None) -> dict[str, Recipe]:
-    catalog_file = path or catalog_path()
+    if path is not None:
+        return _load_one_catalog(path)
+    merged: dict[str, Recipe] = {}
+    for catalog_file in catalog_paths():
+        merged.update(_load_one_catalog(catalog_file))
+    return merged
+
+
+def _load_one_catalog(catalog_file: Path) -> dict[str, Recipe]:
     try:
         text = catalog_file.read_text(encoding="utf-8")
     except OSError as exc:

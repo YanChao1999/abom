@@ -161,8 +161,8 @@ abom remove abom-skill</code></pre>
       </section>
       <section>
         <h2>Outside</h2>
-        <p>Link a tool into another project, or install a checkout that lives outside this one.</p>
-        <pre><code>abom link abom-skill ~/other-project
+        <p>Wire a skill into Cursor, or install a checkout that lives outside this one.</p>
+        <pre><code>abom use abom-skill . --agent cursor
 abom install extra-tool ~/outside-tool</code></pre>
       </section>
     </div>
