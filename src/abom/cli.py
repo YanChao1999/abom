@@ -9,7 +9,13 @@ import sys
 import tempfile
 from pathlib import Path
 
-from abom.check import format_report, inspect_checkout, inspect_material
+from abom.advisory import (
+    AdvisoryError,
+    format_advisory,
+    format_advisory_line,
+    load_advisories,
+)
+from abom.check import format_report, inspect_checkout, inspect_material, report_to_dict
 from abom.lockfile import LockError, default_lock_path, read_lock, write_lock
 from abom.recipe import (
     Recipe,
@@ -142,12 +148,12 @@ def cmd_install_recipe(name: str, *, locked: bool = False, lock_file: Path | Non
             _clone_at_commit(recipe.git, pin, destination)
         else:
             _clone_recipe(recipe, destination)
-        report = inspect_material(recipe, destination)
-        if not report.ok:
-            raise AbomError(format_report(report))
         commit = git_stdout(["rev-parse", "HEAD"], cwd=destination)
         if pin and commit != pin and not commit.startswith(pin) and not pin.startswith(commit):
             raise AbomError(f"checked out {commit}, expected lock commit {pin}")
+        report = inspect_material(recipe, destination, commit=commit)
+        if not report.ok:
+            raise AbomError(format_report(report))
         _write_receipt(recipe, commit)
     except Exception:
         _discard_checkout(destination)
@@ -185,24 +191,25 @@ def cmd_show(name: str) -> str:
         lines.append(f"commit: {receipt['commit']}")
     if receipt and receipt.get("previous_commit"):
         lines.append(f"previous_commit: {receipt['previous_commit']}")
-    lines.append(format_report(inspect_material(recipe, checkout)))
+    commit = receipt.get("commit") if receipt else None
+    if not isinstance(commit, str):
+        commit = None
+    lines.append(format_report(inspect_material(recipe, checkout, commit=commit)))
     return "\n".join(lines)
 
 
 def cmd_check(name: str) -> str:
-    recipe = _load_recipe(name)
-    checkout = tools_dir() / recipe.name
-    if checkout.exists() or checkout.is_symlink():
-        report = inspect_material(recipe, checkout)
-    else:
-        with tempfile.TemporaryDirectory(prefix="abom-check-") as temporary:
-            destination = Path(temporary) / recipe.name
-            _clone_recipe(recipe, destination)
-            report = inspect_material(recipe, destination)
+    report = _inspect_named(name)
     text = format_report(report)
     if not report.ok:
         raise AbomError(text)
     return text
+
+
+def cmd_report(name: str) -> str:
+    recipe = _load_recipe(name)
+    report = _inspect_named(name)
+    return json.dumps(report_to_dict(recipe, report), indent=2) + "\n"
 
 
 def cmd_search(query: str | None) -> list[str]:
@@ -329,10 +336,10 @@ def cmd_rollback(name: str) -> str:
     with tempfile.TemporaryDirectory(prefix="abom-rollback-") as temporary:
         fresh = Path(temporary) / name
         _clone_at_commit(git_url, previous.strip(), fresh)
-        report = inspect_material(recipe, fresh)
+        commit = git_stdout(["rev-parse", "HEAD"], cwd=fresh)
+        report = inspect_material(recipe, fresh, commit=commit)
         if not report.ok:
             raise AbomError(format_report(report))
-        commit = git_stdout(["rev-parse", "HEAD"], cwd=fresh)
         current = receipt.get("commit")
         _replace_checkout(destination, fresh)
         _write_receipt(
@@ -398,6 +405,32 @@ def cmd_catalogs() -> list[str]:
     return lines
 
 
+def cmd_advisories(query: str | None = None) -> list[str]:
+    try:
+        advisories = load_advisories()
+    except AdvisoryError as exc:
+        raise AbomError(str(exc)) from exc
+    if query:
+        needle = query.lower()
+        advisories = [
+            item
+            for item in advisories
+            if needle in f"{item.id} {item.severity} {item.summary} {item.description}".lower()
+        ]
+    return [format_advisory_line(item) for item in advisories]
+
+
+def cmd_advisory(advisory_id: str) -> str:
+    try:
+        advisories = load_advisories()
+    except AdvisoryError as exc:
+        raise AbomError(str(exc)) from exc
+    for item in advisories:
+        if item.id == advisory_id:
+            return format_advisory(item)
+    raise AbomError(f"no advisory named '{advisory_id}'")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="abom", description="Manage agent skills, prompts, and MCP checkouts"
@@ -430,6 +463,17 @@ def build_parser() -> argparse.ArgumentParser:
 
     check_parser = sub.add_parser("check", help="Verify a recipe's kind and install safety")
     check_parser.add_argument("name")
+
+    report_parser = sub.add_parser(
+        "report", help="Print a reproducible JSON security report for a recipe"
+    )
+    report_parser.add_argument("name")
+
+    advisories_parser = sub.add_parser("advisories", help="List published abom advisories")
+    advisories_parser.add_argument("query", nargs="?")
+
+    advisory_parser = sub.add_parser("advisory", help="Show one abom advisory by id")
+    advisory_parser.add_argument("id")
 
     remove_parser = sub.add_parser("remove", help="Remove an installed tool")
     remove_parser.add_argument("name")
@@ -502,6 +546,13 @@ def main(argv: list[str] | None = None) -> int:
             print(cmd_show(args.name))
         elif args.command == "check":
             print(cmd_check(args.name))
+        elif args.command == "report":
+            print(cmd_report(args.name), end="")
+        elif args.command == "advisories":
+            for line in cmd_advisories(args.query):
+                print(line)
+        elif args.command == "advisory":
+            print(cmd_advisory(args.id))
         elif args.command == "remove":
             print(cmd_remove(args.name))
         elif args.command == "link":
@@ -545,6 +596,25 @@ def _load_recipe(name: str) -> Recipe:
         raise AbomError(str(exc)) from exc
 
 
+def _inspect_named(name: str):
+    recipe = _load_recipe(name)
+    checkout = tools_dir() / recipe.name
+    if checkout.exists() or checkout.is_symlink():
+        receipt = _read_receipt(name)
+        commit = receipt.get("commit") if receipt else None
+        if not isinstance(commit, str):
+            try:
+                commit = git_stdout(["rev-parse", "HEAD"], cwd=checkout)
+            except AbomError:
+                commit = None
+        return inspect_material(recipe, checkout, commit=commit)
+    with tempfile.TemporaryDirectory(prefix="abom-check-") as temporary:
+        destination = Path(temporary) / recipe.name
+        _clone_recipe(recipe, destination)
+        commit = git_stdout(["rev-parse", "HEAD"], cwd=destination)
+        return inspect_material(recipe, destination, commit=commit)
+
+
 def _clone_recipe(recipe: Recipe, destination: Path) -> None:
     run_git(["clone", "--depth", "1", "--branch", recipe.ref, recipe.git, str(destination)])
     if recipe.path is not None and not (destination / recipe.path).exists():
@@ -575,10 +645,10 @@ def _upgrade_one(name: str) -> str:
     with tempfile.TemporaryDirectory(prefix="abom-upgrade-") as temporary:
         fresh = Path(temporary) / name
         _clone_recipe(recipe, fresh)
-        report = inspect_material(recipe, fresh)
+        new_commit = git_stdout(["rev-parse", "HEAD"], cwd=fresh)
+        report = inspect_material(recipe, fresh, commit=new_commit)
         if not report.ok:
             raise AbomError(format_report(report))
-        new_commit = git_stdout(["rev-parse", "HEAD"], cwd=fresh)
         if isinstance(old_commit, str) and new_commit == old_commit:
             return f"unchanged {name} @ {new_commit}"
         _replace_checkout(destination, fresh)

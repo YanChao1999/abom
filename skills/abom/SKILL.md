@@ -29,7 +29,7 @@ abom link <name> <target_repo> [--link-name <name>]
 abom remove <name>
 ```
 
-`abom use` wires a skill into `.cursor/skills` (or Claude/Copilot/agents paths) and writes MCP entries into `.cursor/mcp.json`. `abom upgrade` / `abom rollback` move a catalog install between commits. Private catalogs live in `$ABOM_HOME/catalogs/*.json`. `ABOM_HOME` overrides `~/.abom`.
+`abom use` wires a skill into `.cursor/skills` (or Claude/Copilot/agents paths) and writes MCP entries into `.cursor/mcp.json`. `abom upgrade` / `abom rollback` move a catalog install between commits. Private catalogs live in `$ABOM_HOME/catalogs/*.json`. Advisories use ids like `ABOM-2026-0001` and block matching installs; `abom report` prints a reproducible JSON check. `ABOM_HOME` overrides `~/.abom`.
 
 ## Add a recipe
 

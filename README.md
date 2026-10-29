@@ -103,6 +103,18 @@ abom rollback anthropics-skill-creator
 
 A pull request that adds or edits a recipe also asks Copilot, with no checkout tools enabled, to review the cloned material for prompt injection, hidden instructions, secret exfiltration, and remote-shell install hooks. The job fails when that review does not pass.
 
+## Advisories
+
+abom publishes recipe advisories with ids like `ABOM-2026-0001`, similar in role to CVE records for agent materials. Active advisories are checked during `abom check`, `abom install`, `abom upgrade`, and `abom rollback`. `abom report <name>` prints a reproducible JSON report with the rules version and any advisory hits.
+
+```bash
+abom advisories
+abom advisory ABOM-2026-0001
+abom report anthropics-skill-creator
+```
+
+The rejection rules are versioned in `src/abom/rules.json`. The advisory feed is `src/abom/advisories.json` (override with `ABOM_ADVISORIES`). To publish one, append an object with `id`, `severity`, `summary`, `description`, `published`, and `affected` (`recipe` and/or `git`, optional `commits` / `refs`, or `all_commits: true`).
+
 ## Commands
 
 - `abom install <name>`: install the named recipe from the merged catalog into `$ABOM_HOME/tools`.
@@ -116,7 +128,9 @@ A pull request that adds or edits a recipe also asks Copilot, with no checkout t
 - `abom recipes [query]`: list recipes, optionally filtered by name, kind, or description.
 - `abom info <name>`: print one catalog entry.
 - `abom show <name>`: print the catalog entry, whether it is installed, and the check result when it is installed.
-- `abom check <name>`: verify the kind and install safety. Exits with an error when the check fails.
+- `abom check <name>`: verify the kind and install safety, including published advisories. Exits with an error when the check fails.
+- `abom report <name>`: print a reproducible JSON security report (`abom.report/v1`).
+- `abom advisories [query]` / `abom advisory <id>`: list or show published advisories.
 - `abom search [query]`: list installed tools, optionally filtered by name.
 - `abom remove <name>`: remove an installed tool and its receipt.
 - `abom link <name> <target_repo> [--link-name <name>]`: create a symlink at `<target_repo>/.abom/<name>` pointing to the installed material. `target_repo` must already exist.

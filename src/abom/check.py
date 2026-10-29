@@ -6,6 +6,13 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from abom.advisory import (
+    REPORT_SCHEMA,
+    AdvisoryError,
+    AdvisoryHit,
+    load_rules_version,
+    match_advisories,
+)
 from abom.recipe import Recipe, RecipeError, license_terms
 
 # Commands that turn a clone or npm lifecycle script into a remote shell.
@@ -33,25 +40,58 @@ _TEXT_SCAN_BYTES = 256_000
 class CheckReport:
     ok: bool
     findings: tuple[str, ...]
+    rules_version: str = "unknown"
+    advisories: tuple[AdvisoryHit, ...] = ()
+    commit: str | None = None
 
 
-def inspect_material(recipe: Recipe, checkout: Path) -> CheckReport:
+def inspect_material(
+    recipe: Recipe,
+    checkout: Path,
+    *,
+    commit: str | None = None,
+) -> CheckReport:
     material = checkout if recipe.path is None else checkout / recipe.path
     findings: list[str] = []
+    advisories: tuple[AdvisoryHit, ...] = ()
+    rules_version = _rules_version()
     if not material.exists() and not material.is_symlink():
         findings.append(f"{recipe.kind} path '{recipe.path or '.'}' is missing")
-        return CheckReport(False, tuple(findings))
+        return CheckReport(False, tuple(findings), rules_version=rules_version, commit=commit)
 
     findings.extend(_symlink_findings(checkout, material))
     findings.extend(_kind_findings(recipe.kind, material))
     findings.extend(_license_findings(recipe.license, checkout, material))
-    return CheckReport(not findings, tuple(findings))
+    try:
+        advisories = tuple(
+            match_advisories(
+                recipe_name=recipe.name,
+                git=recipe.git,
+                commit=commit,
+                ref=recipe.ref,
+            )
+        )
+    except AdvisoryError as exc:
+        findings.append(str(exc))
+    else:
+        for hit in advisories:
+            findings.append(
+                f"advisory {hit.advisory.id} ({hit.advisory.severity}): "
+                f"{hit.advisory.summary} [{hit.reason}]"
+            )
+    return CheckReport(
+        not findings,
+        tuple(findings),
+        rules_version=rules_version,
+        advisories=advisories,
+        commit=commit,
+    )
 
 
 def inspect_checkout(checkout: Path) -> CheckReport:
     """Scan an ad-hoc clone that has no recipe kind."""
     findings = _symlink_findings(checkout, checkout)
-    return CheckReport(not findings, tuple(findings))
+    return CheckReport(not findings, tuple(findings), rules_version=_rules_version())
 
 
 def material_excerpt(recipe: Recipe, checkout: Path) -> str:
@@ -69,10 +109,58 @@ def material_excerpt(recipe: Recipe, checkout: Path) -> str:
 
 
 def format_report(report: CheckReport) -> str:
-    if report.ok:
-        return "check: pass"
-    lines = ["check: fail", *(f"- {finding}" for finding in report.findings)]
+    lines = [
+        f"check: {'pass' if report.ok else 'fail'}",
+        f"report: {REPORT_SCHEMA}",
+        f"rules: {report.rules_version}",
+    ]
+    if report.commit:
+        lines.append(f"commit: {report.commit}")
+    if report.advisories:
+        lines.append("advisories:")
+        for hit in report.advisories:
+            lines.append(f"- {hit.advisory.id}  {hit.advisory.severity}  {hit.advisory.summary}")
+    else:
+        lines.append("advisories: none")
+    if report.findings:
+        lines.append("findings:")
+        lines.extend(f"- {finding}" for finding in report.findings)
     return "\n".join(lines)
+
+
+def report_to_dict(recipe: Recipe, report: CheckReport) -> dict:
+    return {
+        "schema": REPORT_SCHEMA,
+        "ok": report.ok,
+        "rules_version": report.rules_version,
+        "recipe": {
+            "name": recipe.name,
+            "kind": recipe.kind,
+            "git": recipe.git,
+            "ref": recipe.ref,
+            "path": recipe.path,
+            "license": recipe.license,
+        },
+        "commit": report.commit,
+        "findings": list(report.findings),
+        "advisories": [
+            {
+                "id": hit.advisory.id,
+                "severity": hit.advisory.severity,
+                "summary": hit.advisory.summary,
+                "reason": hit.reason,
+                "published": hit.advisory.published,
+            }
+            for hit in report.advisories
+        ],
+    }
+
+
+def _rules_version() -> str:
+    try:
+        return load_rules_version()
+    except AdvisoryError:
+        return "unknown"
 
 
 def _kind_findings(kind: str, material: Path) -> list[str]:
