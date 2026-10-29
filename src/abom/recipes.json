@@ -50,6 +50,66 @@
       }
     },
     {
+      "name": "anthropics-claude-api",
+      "kind": "skill",
+      "description": "Reference for the Claude API and Anthropic SDK, including models, pricing, streaming, and tool use.",
+      "homepage": "https://github.com/anthropics/skills/tree/main/skills/claude-api",
+      "license": "Apache-2.0",
+      "source": {
+        "git": "https://github.com/anthropics/skills.git",
+        "ref": "main",
+        "path": "skills/claude-api"
+      }
+    },
+    {
+      "name": "anthropics-canvas-design",
+      "kind": "skill",
+      "description": "Create visual art in PNG and PDF documents from a written design philosophy.",
+      "homepage": "https://github.com/anthropics/skills/tree/main/skills/canvas-design",
+      "license": "Apache-2.0",
+      "source": {
+        "git": "https://github.com/anthropics/skills.git",
+        "ref": "main",
+        "path": "skills/canvas-design"
+      }
+    },
+    {
+      "name": "anthropics-theme-factory",
+      "kind": "skill",
+      "description": "Style slides, documents, reports, and HTML pages with a preset theme.",
+      "homepage": "https://github.com/anthropics/skills/tree/main/skills/theme-factory",
+      "license": "Apache-2.0",
+      "source": {
+        "git": "https://github.com/anthropics/skills.git",
+        "ref": "main",
+        "path": "skills/theme-factory"
+      }
+    },
+    {
+      "name": "anthropics-web-artifacts-builder",
+      "kind": "skill",
+      "description": "Build multi-component HTML artifacts with React, Tailwind CSS, and shadcn/ui.",
+      "homepage": "https://github.com/anthropics/skills/tree/main/skills/web-artifacts-builder",
+      "license": "Apache-2.0",
+      "source": {
+        "git": "https://github.com/anthropics/skills.git",
+        "ref": "main",
+        "path": "skills/web-artifacts-builder"
+      }
+    },
+    {
+      "name": "anthropics-slack-gif-creator",
+      "kind": "skill",
+      "description": "Create animated GIFs sized and optimized for Slack.",
+      "homepage": "https://github.com/anthropics/skills/tree/main/skills/slack-gif-creator",
+      "license": "Apache-2.0",
+      "source": {
+        "git": "https://github.com/anthropics/skills.git",
+        "ref": "main",
+        "path": "skills/slack-gif-creator"
+      }
+    },
+    {
       "name": "f-prompts",
       "kind": "prompt",
       "description": "Community prompt collection from prompts.chat, formerly Awesome ChatGPT Prompts.",
@@ -71,6 +131,30 @@
         "git": "https://github.com/danielmiessler/fabric.git",
         "ref": "main",
         "path": "data/patterns/summarize/system.md"
+      }
+    },
+    {
+      "name": "danielmiessler-extract-wisdom",
+      "kind": "prompt",
+      "description": "Fabric prompt that extracts ideas, insights, quotes, and habits from content.",
+      "homepage": "https://github.com/danielmiessler/fabric/blob/main/data/patterns/extract_wisdom/system.md",
+      "license": "MIT",
+      "source": {
+        "git": "https://github.com/danielmiessler/fabric.git",
+        "ref": "main",
+        "path": "data/patterns/extract_wisdom/system.md"
+      }
+    },
+    {
+      "name": "danielmiessler-explain-code",
+      "kind": "prompt",
+      "description": "Fabric prompt that explains what a piece of code does.",
+      "homepage": "https://github.com/danielmiessler/fabric/blob/main/data/patterns/explain_code/system.md",
+      "license": "MIT",
+      "source": {
+        "git": "https://github.com/danielmiessler/fabric.git",
+        "ref": "main",
+        "path": "data/patterns/explain_code/system.md"
       }
     },
     {
@@ -119,6 +203,42 @@
         "git": "https://github.com/modelcontextprotocol/servers.git",
         "ref": "main",
         "path": "src/git"
+      }
+    },
+    {
+      "name": "modelcontextprotocol-time",
+      "kind": "mcp",
+      "description": "MCP server for time queries and timezone conversions.",
+      "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/time",
+      "license": "MIT",
+      "source": {
+        "git": "https://github.com/modelcontextprotocol/servers.git",
+        "ref": "main",
+        "path": "src/time"
+      }
+    },
+    {
+      "name": "modelcontextprotocol-sequentialthinking",
+      "kind": "mcp",
+      "description": "MCP server for sequential thinking and problem solving.",
+      "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/sequentialthinking",
+      "license": "Apache-2.0 OR MIT",
+      "source": {
+        "git": "https://github.com/modelcontextprotocol/servers.git",
+        "ref": "main",
+        "path": "src/sequentialthinking"
+      }
+    },
+    {
+      "name": "modelcontextprotocol-everything",
+      "kind": "mcp",
+      "description": "MCP server that exercises the features of the MCP protocol.",
+      "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/everything",
+      "license": "Apache-2.0 OR MIT",
+      "source": {
+        "git": "https://github.com/modelcontextprotocol/servers.git",
+        "ref": "main",
+        "path": "src/everything"
       }
     },
     {
