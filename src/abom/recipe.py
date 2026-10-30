@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path, PurePosixPath
 
 SCHEMA = "abom.catalog/v1"
@@ -38,6 +38,8 @@ class Recipe:
     git: str
     ref: str
     path: str | None
+    catalog: str | None = None
+    tap: str | None = None
 
 
 def bundled_catalog_path() -> Path:
@@ -58,30 +60,43 @@ def catalog_path() -> Path:
     return bundled_catalog_path()
 
 
-def catalog_paths() -> list[Path]:
-    """Catalog files in merge order. Later files override earlier names."""
+def catalog_sources() -> list[tuple[str, Path]]:
+    """Named catalog sources in merge order. Later taps override earlier names."""
     override = os.environ.get("ABOM_CATALOG")
     if override:
-        return [Path(override).expanduser()]
+        return [("override", Path(override).expanduser())]
 
-    paths = [bundled_catalog_path()]
+    sources: list[tuple[str, Path]] = [("core", bundled_catalog_path())]
+    try:
+        from abom.taps import TapError, registered_tap_sources
+
+        sources.extend(registered_tap_sources())
+    except TapError as exc:
+        raise RecipeError(str(exc)) from exc
     private = private_catalogs_dir()
     if private.is_dir():
-        paths.extend(sorted(private.glob("*.json")))
+        for path in sorted(private.glob("*.json")):
+            sources.append((f"local/{path.stem}", path))
     extra = os.environ.get("ABOM_EXTRA_CATALOGS", "")
-    for part in extra.split(os.pathsep):
+    for index, part in enumerate(extra.split(os.pathsep)):
         part = part.strip()
         if part:
-            paths.append(Path(part).expanduser())
-    return paths
+            sources.append((f"extra/{index}", Path(part).expanduser()))
+    return sources
+
+
+def catalog_paths() -> list[Path]:
+    """Catalog files in merge order. Later files override earlier names."""
+    return [path for _name, path in catalog_sources()]
 
 
 def load_catalog(path: Path | None = None) -> dict[str, Recipe]:
     if path is not None:
         return _load_one_catalog(path)
     merged: dict[str, Recipe] = {}
-    for catalog_file in catalog_paths():
-        merged.update(_load_one_catalog(catalog_file))
+    for tap_name, catalog_file in catalog_sources():
+        for name, recipe in _load_one_catalog(catalog_file).items():
+            merged[name] = replace(recipe, catalog=str(catalog_file), tap=tap_name)
     return merged
 
 
@@ -244,6 +259,14 @@ def format_recipe(recipe: Recipe) -> str:
     ]
     if recipe.path is not None:
         lines.append(f"path: {recipe.path}")
+    if recipe.tap is not None:
+        lines.append(f"tap: {recipe.tap}")
+        if recipe.tap == "core":
+            lines.append("trust: public core")
+        else:
+            lines.append(f"trust: tap/{recipe.tap}")
+    if recipe.catalog is not None:
+        lines.append(f"catalog: {recipe.catalog}")
     return "\n".join(lines)
 
 

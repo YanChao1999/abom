@@ -28,6 +28,10 @@ from abom.cli import (
     cmd_rollback,
     cmd_search,
     cmd_show,
+    cmd_sync,
+    cmd_tap_add,
+    cmd_tap_list,
+    cmd_tap_remove,
     cmd_upgrade,
     cmd_use,
 )
@@ -67,10 +71,21 @@ _TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "install_recipe",
-        "description": "Install an abom recipe by name after the kind and security check passes.",
+        "description": "Install an abom recipe by name after the kind and security check passes. Optionally wire it with use_target.",
         "inputSchema": {
             "type": "object",
-            "properties": {"name": {"type": "string"}},
+            "properties": {
+                "name": {"type": "string"},
+                "use_target": {
+                    "type": "string",
+                    "description": "Project root to wire into; use '.' for the nearest workspace from cwd",
+                },
+                "agent": {
+                    "type": "string",
+                    "enum": ["cursor", "claude", "copilot", "agents", "codex", "all"],
+                },
+                "workspace": {"type": "string"},
+            },
             "required": ["name"],
             "additionalProperties": False,
         },
@@ -100,19 +115,23 @@ _TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "use_tool",
-        "description": "Wire an installed skill or MCP into Cursor, Claude, or Copilot paths in a project.",
+        "description": "Wire an installed skill, prompt, or MCP into Cursor, Claude, Copilot, agents, or Codex paths.",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "name": {"type": "string"},
-                "target_repo": {"type": "string"},
+                "target_repo": {
+                    "type": "string",
+                    "description": "Project root; omit to use the nearest workspace from cwd",
+                },
                 "agent": {
                     "type": "string",
-                    "enum": ["cursor", "claude", "copilot", "agents", "all"],
+                    "enum": ["cursor", "claude", "copilot", "agents", "codex", "all"],
                 },
                 "link_name": {"type": "string"},
+                "workspace": {"type": "string"},
             },
-            "required": ["name", "target_repo"],
+            "required": ["name"],
             "additionalProperties": False,
         },
     },
@@ -128,6 +147,47 @@ _TOOLS: list[dict[str, Any]] = [
     {
         "name": "rollback_tool",
         "description": "Restore an installed recipe to its previous receipt commit.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"name": {"type": "string"}},
+            "required": ["name"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "sync_tools",
+        "description": "Install or reinstall tools so they match abom.lock.json.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"lock_file": {"type": "string"}},
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "list_taps",
+        "description": "List the public core trust root and registered private catalog taps.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "add_tap",
+        "description": "Register a local catalog JSON file as a named private tap.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "catalog": {"type": "string"},
+            },
+            "required": ["name", "catalog"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "remove_tap",
+        "description": "Remove a registered private catalog tap.",
         "inputSchema": {
             "type": "object",
             "properties": {"name": {"type": "string"}},
@@ -201,7 +261,15 @@ def _dispatch(name: str, arguments: dict[str, Any]) -> str:
     if name == "check_recipe":
         return cmd_check(_required(arguments, "name"))
     if name == "install_recipe":
-        return cmd_install_recipe(_required(arguments, "name"))
+        use_target = arguments.get("use_target")
+        workspace = arguments.get("workspace")
+        agent = arguments.get("agent")
+        return cmd_install_recipe(
+            _required(arguments, "name"),
+            use_target=use_target if isinstance(use_target, str) else None,
+            agent=agent if isinstance(agent, str) else None,
+            workspace=workspace if isinstance(workspace, str) else None,
+        )
     if name == "search_installed":
         found = cmd_search(arguments.get("query"))
         return "\n".join(found)
@@ -212,11 +280,15 @@ def _dispatch(name: str, arguments: dict[str, Any]) -> str:
             arguments.get("link_name"),
         )
     if name == "use_tool":
+        target = arguments.get("target_repo")
+        agent = arguments.get("agent")
+        workspace = arguments.get("workspace")
         return cmd_use(
             _required(arguments, "name"),
-            _required(arguments, "target_repo"),
-            agent=str(arguments.get("agent") or "cursor"),
+            target if isinstance(target, str) else None,
+            agent=agent if isinstance(agent, str) else None,
             link_name=arguments.get("link_name"),
+            workspace=workspace if isinstance(workspace, str) else None,
         )
     if name == "upgrade_tool":
         name_arg = arguments.get("name")
@@ -224,6 +296,16 @@ def _dispatch(name: str, arguments: dict[str, Any]) -> str:
         return "\n".join(lines)
     if name == "rollback_tool":
         return cmd_rollback(_required(arguments, "name"))
+    if name == "sync_tools":
+        lock_file = arguments.get("lock_file")
+        path = Path(lock_file).expanduser() if isinstance(lock_file, str) and lock_file else None
+        return "\n".join(cmd_sync(path))
+    if name == "list_taps":
+        return "\n".join(cmd_tap_list())
+    if name == "add_tap":
+        return cmd_tap_add(_required(arguments, "name"), _required(arguments, "catalog"))
+    if name == "remove_tap":
+        return cmd_tap_remove(_required(arguments, "name"))
     if name == "remove_tool":
         return cmd_remove(_required(arguments, "name"))
     raise AbomError(f"unknown tool '{name}'")

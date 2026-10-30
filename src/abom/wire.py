@@ -11,6 +11,15 @@ SKILL_TARGETS = {
     "claude": (".claude/skills",),
     "copilot": (".github/skills",),
     "agents": (".agents/skills",),
+    "codex": (".codex/skills",),
+}
+
+PROMPT_TARGETS = {
+    "cursor": (".cursor/prompts",),
+    "claude": (".claude/prompts",),
+    "copilot": (".github/prompts",),
+    "agents": (".agents/prompts",),
+    "codex": (".codex/prompts",),
 }
 
 MCP_FILES = {
@@ -24,13 +33,21 @@ class WireError(Exception):
 
 
 def skill_dirs(agent: str, project: Path) -> list[Path]:
+    return _agent_dirs(agent, project, SKILL_TARGETS)
+
+
+def prompt_dirs(agent: str, project: Path) -> list[Path]:
+    return _agent_dirs(agent, project, PROMPT_TARGETS)
+
+
+def _agent_dirs(agent: str, project: Path, mapping: dict[str, tuple[str, ...]]) -> list[Path]:
     if agent == "all":
-        names = ("cursor", "claude", "copilot", "agents")
-    elif agent in SKILL_TARGETS:
+        names = tuple(mapping)
+    elif agent in mapping:
         names = (agent,)
     else:
         raise WireError(f"unknown agent '{agent}'")
-    return [project.joinpath(*rel.split("/")) for name in names for rel in SKILL_TARGETS[name]]
+    return [project.joinpath(*rel.split("/")) for name in names for rel in mapping[name]]
 
 
 def mcp_config_path(agent: str, project: Path, *, global_scope: bool) -> Path:
@@ -48,19 +65,32 @@ def mcp_config_path(agent: str, project: Path, *, global_scope: bool) -> Path:
 
 
 def link_skill(material: Path, destination: Path) -> str:
+    return _link_path(material, destination, label="skill")
+
+
+def link_prompt(material: Path, destination: Path) -> str:
+    return _link_path(material, destination, label="prompt")
+
+
+def _link_path(material: Path, destination: Path, *, label: str) -> str:
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.exists() or destination.is_symlink():
         if destination.is_symlink() and destination.resolve() == material.resolve():
-            return f"skill already linked -> {destination}"
-        raise WireError(f"skill link '{destination}' already exists")
+            return f"{label} already linked -> {destination}"
+        raise WireError(f"{label} link '{destination}' already exists")
     destination.symlink_to(
         os.path.relpath(material, destination.parent),
         target_is_directory=material.is_dir(),
     )
-    return f"linked skill -> {destination}"
+    return f"linked {label} -> {destination}"
 
 
-def mcp_server_entry(name: str, material: Path) -> dict:
+def mcp_server_entry(
+    name: str,
+    material: Path,
+    *,
+    workspace: Path | None = None,
+) -> dict:
     """Build a Cursor/Claude mcpServers entry for an installed checkout."""
     package_json = material / "package.json"
     if package_json.is_file():
@@ -70,22 +100,41 @@ def mcp_server_entry(name: str, material: Path) -> dict:
             raise WireError(f"could not read package.json: {exc}") from exc
         package_name = data.get("name") if isinstance(data, dict) else None
         if isinstance(package_name, str) and package_name.strip():
-            return {"command": "npx", "args": ["-y", package_name.strip()]}
+            entry: dict = {"command": "npx", "args": ["-y", package_name.strip()]}
+            return _with_workspace(entry, package_name.strip(), workspace)
         index_js = material / "index.js"
         if index_js.is_file():
-            return {"command": "node", "args": [str(index_js.resolve())]}
+            entry = {"command": "node", "args": [str(index_js.resolve())]}
+            return _with_workspace(entry, name, workspace)
         raise WireError(f"mcp '{name}' has package.json but no package name or index.js to launch")
 
-    for entry in ("server.py", "main.py"):
-        script = material / entry
+    for entry_name in ("server.py", "main.py"):
+        script = material / entry_name
         if script.is_file():
-            return {"command": "python", "args": [str(script.resolve())]}
+            entry = {"command": "python", "args": [str(script.resolve())]}
+            if workspace is not None:
+                entry["cwd"] = str(workspace.resolve(strict=False))
+            return entry
 
     if (material / "pyproject.toml").is_file():
         raise WireError(
             f"mcp '{name}' looks like a Python package; install it and set the module command by hand"
         )
     raise WireError(f"mcp '{name}' has no package.json, server.py, or main.py to launch")
+
+
+def _with_workspace(entry: dict, package_name: str, workspace: Path | None) -> dict:
+    if workspace is None:
+        return entry
+    root = str(workspace.resolve(strict=False))
+    entry = {**entry, "cwd": root}
+    lowered = package_name.lower()
+    if "filesystem" in lowered or lowered.endswith("-fs") or lowered.endswith("/fs"):
+        args = list(entry.get("args") or [])
+        if root not in args:
+            args.append(root)
+        entry["args"] = args
+    return entry
 
 
 def merge_mcp_server(config_path: Path, name: str, entry: dict) -> str:

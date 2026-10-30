@@ -13,13 +13,35 @@ SITE = ROOT / "site"
 HOME = "https://yanchao1999.github.io/abom/"
 REPO = "https://github.com/YanChao1999/abom"
 
+COMMANDS = [
+    ("install <name> [--use] [--locked]", "Install a catalog recipe; bare --use wires the nearest workspace"),
+    ("use <name> [target]", "Wire into the nearest workspace from cwd (uv-style)"),
+    ("upgrade [name]", "Move installed checkouts to the recipe ref tip"),
+    ("rollback <name>", "Restore the previous receipt commit"),
+    ("lock [--check]", "Write or verify abom.lock.json"),
+    ("sync", "Install or reinstall tools to match the lock file"),
+    ("tap list|add|remove", "Private catalog taps over the public core trust root"),
+    ("catalogs", "List merged catalog sources and the trust root"),
+    ("recipes [query]", "List installable recipes"),
+    ("info <name>", "Show one catalog entry"),
+    ("show <name>", "Catalog entry, install state, and check result"),
+    ("check <name>", "Verify kind, license, and advisories"),
+    ("report <name>", "Print a reproducible JSON security report"),
+    ("advisories [query]", "List published ABOM advisories"),
+    ("advisory <id>", "Show one advisory"),
+    ("search [query]", "List installed tools"),
+    ("link <name> <target>", "Symlink into <target>/.abom/"),
+    ("remove <name>", "Remove an installed tool and its receipt"),
+]
+
 
 def main() -> None:
     catalog = json.loads(CATALOG.read_text(encoding="utf-8"))
     recipes = sorted(catalog["recipes"], key=lambda recipe: recipe["name"])
     rows = "\n".join(_row(recipe) for recipe in recipes)
+    command_rows = "\n".join(_command_row(command, summary) for command, summary in COMMANDS)
     SITE.mkdir(parents=True, exist_ok=True)
-    (SITE / "index.html").write_text(_page(rows), encoding="utf-8")
+    (SITE / "index.html").write_text(_page(rows, command_rows), encoding="utf-8")
 
 
 def _row(recipe: dict) -> str:
@@ -38,14 +60,23 @@ def _row(recipe: dict) -> str:
     )
 
 
-def _page(rows: str) -> str:
+def _command_row(command: str, summary: str) -> str:
+    return (
+        "<tr>"
+        f"<td><code>abom {html.escape(command)}</code></td>"
+        f"<td>{html.escape(summary)}</td>"
+        "</tr>"
+    )
+
+
+def _page(rows: str, command_rows: str) -> str:
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>abom</title>
-  <meta name="description" content="Install an agent tool with one command, manage it, and link it into another project.">
+  <meta name="description" content="Install an agent tool with one command, wire it into the nearest workspace, and pin it with a lock file.">
   <link rel="canonical" href="{HOME}">
   <style>
     :root {{
@@ -116,6 +147,9 @@ def _page(rows: str) -> str:
       font-size: 22px;
       margin: 0 0 12px;
     }}
+    section.block {{
+      margin-bottom: 36px;
+    }}
     table {{
       width: 100%;
       border-collapse: collapse;
@@ -144,28 +178,39 @@ def _page(rows: str) -> str:
 <body>
   <main>
     <h1>ab<span>om</span></h1>
-    <p class="lede">Install an agent tool with one command, manage it, and link it into another project.</p>
+    <p class="lede">Install an agent tool with one command, wire it into the nearest workspace, and pin it with a lock file.</p>
     <div class="panels">
       <section>
         <h2>Install</h2>
-        <p>One command names the tool. The git URL stays in the catalog.</p>
+        <p>Name the tool. The git URL stays in the catalog.</p>
         <pre><code>pip install abom
 abom install abom-skill</code></pre>
       </section>
       <section>
-        <h2>Manage</h2>
-        <p>List the catalog, check a tool, and remove it when you are done.</p>
-        <pre><code>abom recipes
-abom check abom-skill
-abom remove abom-skill</code></pre>
+        <h2>Wire</h2>
+        <p>Bare --use targets the nearest workspace from cwd.</p>
+        <pre><code>abom install abom-skill --use --agent cursor
+abom use modelcontextprotocol-filesystem</code></pre>
       </section>
       <section>
-        <h2>Outside</h2>
-        <p>Wire a skill into Cursor, or install a checkout that lives outside this one.</p>
-        <pre><code>abom use abom-skill . --agent cursor
-abom install extra-tool ~/outside-tool</code></pre>
+        <h2>Pin</h2>
+        <p>Lock commits, sync a project, and overlay private taps.</p>
+        <pre><code>abom lock
+abom sync
+abom tap add team ./team.json</code></pre>
       </section>
     </div>
+    <section class="block">
+      <h2>Commands</h2>
+      <table>
+        <thead>
+          <tr><th>Command</th><th>What it does</th></tr>
+        </thead>
+        <tbody>
+          {command_rows}
+        </tbody>
+      </table>
+    </section>
     <p class="lede">Skills, prompts, MCP servers, and packages.</p>
     <h2>Recipes</h2>
     <table>
