@@ -25,8 +25,11 @@ from abom.cli import (
     cmd_link,
     cmd_recipes,
     cmd_remove,
+    cmd_rollback,
     cmd_search,
     cmd_show,
+    cmd_upgrade,
+    cmd_use,
 )
 
 PROTOCOL_VERSION = "2024-11-05"
@@ -92,6 +95,43 @@ _TOOLS: list[dict[str, Any]] = [
                 "link_name": {"type": "string"},
             },
             "required": ["name", "target_repo"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "use_tool",
+        "description": "Wire an installed skill or MCP into Cursor, Claude, or Copilot paths in a project.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "target_repo": {"type": "string"},
+                "agent": {
+                    "type": "string",
+                    "enum": ["cursor", "claude", "copilot", "agents", "all"],
+                },
+                "link_name": {"type": "string"},
+            },
+            "required": ["name", "target_repo"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "upgrade_tool",
+        "description": "Upgrade one installed recipe checkout, or all of them when name is omitted.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"name": {"type": "string"}},
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "rollback_tool",
+        "description": "Restore an installed recipe to its previous receipt commit.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"name": {"type": "string"}},
+            "required": ["name"],
             "additionalProperties": False,
         },
     },
@@ -171,6 +211,19 @@ def _dispatch(name: str, arguments: dict[str, Any]) -> str:
             _required(arguments, "target_repo"),
             arguments.get("link_name"),
         )
+    if name == "use_tool":
+        return cmd_use(
+            _required(arguments, "name"),
+            _required(arguments, "target_repo"),
+            agent=str(arguments.get("agent") or "cursor"),
+            link_name=arguments.get("link_name"),
+        )
+    if name == "upgrade_tool":
+        name_arg = arguments.get("name")
+        lines = cmd_upgrade(name_arg if isinstance(name_arg, str) else None)
+        return "\n".join(lines)
+    if name == "rollback_tool":
+        return cmd_rollback(_required(arguments, "name"))
     if name == "remove_tool":
         return cmd_remove(_required(arguments, "name"))
     raise AbomError(f"unknown tool '{name}'")

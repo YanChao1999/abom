@@ -91,8 +91,11 @@ abom recipes
 abom info anthropics-skill-creator
 abom check anthropics-skill-creator
 abom install anthropics-skill-creator
+abom use anthropics-skill-creator /path/to/project --agent cursor
 abom show anthropics-skill-creator
-abom link anthropics-skill-creator /path/to/project
+abom upgrade anthropics-skill-creator
+abom lock
+abom rollback anthropics-skill-creator
 ```
 
 `abom check` clones the recipe when it is not installed yet, then deletes that temporary checkout. Install runs the same check and keeps the checkout only when it passes. The check confirms the kind and blocks install-time hijacks:
@@ -112,8 +115,14 @@ A pull request that adds or edits a recipe also asks Copilot, with no checkout t
 
 ## Commands
 
-- `abom install <name>`: install the named recipe from `recipes.json` into `$ABOM_HOME/tools`.
+- `abom install <name>`: install the named recipe from the merged catalog into `$ABOM_HOME/tools`.
+- `abom install <name> --locked`: install the commit pinned in `abom.lock.json`.
 - `abom install <name> <git_url>`: clone a git repository that is not in the catalog.
+- `abom use <name> <target_repo> [--agent cursor|claude|copilot|agents|all]`: wire a skill into agent skill dirs, or write an MCP entry into `.cursor/mcp.json`.
+- `abom upgrade [name]`: move installed catalog checkouts to the current recipe ref tip.
+- `abom rollback <name>`: restore the previous receipt commit.
+- `abom lock` / `abom lock --check`: write or verify `abom.lock.json` from installed receipt commits.
+- `abom catalogs`: list the merged catalog files and the private catalogs directory.
 - `abom recipes [query]`: list recipes, optionally filtered by name, kind, or description.
 - `abom info <name>`: print one catalog entry.
 - `abom show <name>`: print the catalog entry, whether it is installed, and the check result when it is installed.
@@ -122,4 +131,4 @@ A pull request that adds or edits a recipe also asks Copilot, with no checkout t
 - `abom remove <name>`: remove an installed tool and its receipt.
 - `abom link <name> <target_repo> [--link-name <name>]`: create a symlink at `<target_repo>/.abom/<name>` pointing to the installed material. `target_repo` must already exist.
 
-Set `ABOM_HOME` to override `~/.abom`.
+Set `ABOM_HOME` to override `~/.abom`. Drop private recipe JSON files into `$ABOM_HOME/catalogs/*.json`, or set `ABOM_EXTRA_CATALOGS` to a path list (`os.pathsep` separated). Later catalogs override earlier names. `ABOM_CATALOG` still replaces the whole merge for tests.
