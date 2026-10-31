@@ -52,8 +52,15 @@ def test_pages_build_lists_catalog_recipes() -> None:
     assert "abom-skill" in page
     assert "pip install abom" in page
     assert "abom install abom-skill" in page
-    assert "Install an agent tool with one command" in page
-    assert "abom use abom-skill . --agent cursor" in page
+    assert "wire it into the nearest workspace" in page
+    assert "abom install abom-skill --use --agent cursor" in page
+    assert "abom use modelcontextprotocol-filesystem" in page
+    assert "abom sync" in page
+    assert "abom tap add team" in page
+    assert "abom lock [--check]" in page
+    assert "abom report &lt;name&gt;" in page
+    assert "abom advisories [query]" in page
+    assert "Commands" in page
 
 
 def test_new_recipe_with_an_unknown_license_fails() -> None:

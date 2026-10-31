@@ -1,6 +1,6 @@
 ---
 name: abom
-description: Install, check, use, upgrade, lock, and roll back agent skills, prompts, MCP servers, and packages with the abom CLI. Use when the user wants to add an agent material, wire it into Cursor/Claude/Copilot paths, pin commits, or manage a private catalog.
+description: Install, check, use, sync, upgrade, lock, roll back, and tap private catalogs for agent skills, prompts, MCP servers, and packages with the abom CLI. Use when the user wants to add an agent material, wire it into Cursor/Claude/Copilot/Codex paths, pin commits, or overlay a private catalog on the public core trust root.
 ---
 
 # abom
@@ -18,18 +18,21 @@ abom recipes [query]
 abom info <name>
 abom show <name>
 abom check <name>
-abom install <name>
-abom use <name> <target_repo> --agent cursor
+abom install <name> [--use --agent cursor]
+abom use <name>   # nearest workspace from cwd; agent from .abom/project.json
 abom upgrade [name]
 abom lock
+abom sync
 abom rollback <name>
+abom tap list
+abom tap add <name> <catalog.json>
 abom catalogs
 abom search [query]
 abom link <name> <target_repo> [--link-name <name>]
 abom remove <name>
 ```
 
-`abom use` wires a skill into `.cursor/skills` (or Claude/Copilot/agents paths) and writes MCP entries into `.cursor/mcp.json`. `abom upgrade` / `abom rollback` move a catalog install between commits. Private catalogs live in `$ABOM_HOME/catalogs/*.json`. `ABOM_HOME` overrides `~/.abom`.
+`abom use` / `install --use` wires into the nearest project workspace from cwd (like `uv`: walk up for `.abom`, `abom.lock.json`, `.cursor`, `.git`, else cwd). Agent prefs live in `<workspace>/.abom/project.json`. MCP `cwd`/filesystem args default to that workspace. `abom sync` installs to lock commits. `abom tap` overlays private catalogs on public `core`. Advisories use ids like `ABOM-2026-0001`. `ABOM_HOME` overrides `~/.abom`.
 
 ## Add a recipe
 
@@ -61,4 +64,4 @@ Install this package from GitHub with `pip install git+https://github.com/YanCha
 ## This repo
 
 - `abom-skill` is this skill (`skills/abom`).
-- `abom-mcp` is the stdio MCP server (`mcp/server.py`). Launch it with `python mcp/server.py`. It exposes list, show, check, install, use, upgrade, rollback, search, link, and remove.
+- `abom-mcp` is the stdio MCP server (`mcp/server.py`). Launch it with `python mcp/server.py`. It exposes list, show, check, install, use, upgrade, sync, tap, rollback, search, link, and remove.
