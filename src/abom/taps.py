@@ -67,7 +67,9 @@ def write_tap_entries(entries: list[dict]) -> None:
 
 def add_path_tap(name: str, catalog: Path) -> str:
     if not NAME_RE.fullmatch(name):
-        raise TapError(f"tap name '{name}' must be lowercase letters, numbers, and . _ - separators")
+        raise TapError(
+            f"tap name '{name}' must be lowercase letters, numbers, and . _ - separators"
+        )
     if name == "core":
         raise TapError("tap name 'core' is reserved for the bundled public catalog")
     resolved = catalog.expanduser().resolve(strict=False)

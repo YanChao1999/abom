@@ -14,7 +14,10 @@ HOME = "https://yanchao1999.github.io/abom/"
 REPO = "https://github.com/YanChao1999/abom"
 
 COMMANDS = [
-    ("install <name> [--use] [--locked]", "Install a catalog recipe; bare --use wires the nearest workspace"),
+    (
+        "install <name> [--use] [--locked]",
+        "Install a catalog recipe; bare --use wires the nearest workspace",
+    ),
     ("use <name> [target]", "Wire into the nearest workspace from cwd (uv-style)"),
     ("upgrade [name]", "Move installed checkouts to the recipe ref tip"),
     ("rollback <name>", "Restore the previous receipt commit"),
@@ -62,10 +65,7 @@ def _row(recipe: dict) -> str:
 
 def _command_row(command: str, summary: str) -> str:
     return (
-        "<tr>"
-        f"<td><code>abom {html.escape(command)}</code></td>"
-        f"<td>{html.escape(summary)}</td>"
-        "</tr>"
+        f"<tr><td><code>abom {html.escape(command)}</code></td><td>{html.escape(summary)}</td></tr>"
     )
 
 
