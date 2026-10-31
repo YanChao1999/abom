@@ -72,18 +72,28 @@ def test_bundled_catalog_has_one_of_each_kind(tmp_path: Path, monkeypatch) -> No
         "abom-mcp",
         "abom-package",
         "abom-skill",
+        "anthropics-canvas-design",
+        "anthropics-claude-api",
         "anthropics-frontend-design",
         "anthropics-mcp-builder",
         "anthropics-skill-creator",
+        "anthropics-slack-gif-creator",
+        "anthropics-theme-factory",
+        "anthropics-web-artifacts-builder",
         "anthropics-webapp-testing",
+        "danielmiessler-explain-code",
+        "danielmiessler-extract-wisdom",
         "danielmiessler-summarize",
         "f-prompts",
         "f-prompts-chat",
+        "modelcontextprotocol-everything",
         "modelcontextprotocol-fetch",
         "modelcontextprotocol-filesystem",
         "modelcontextprotocol-git",
         "modelcontextprotocol-memory",
         "modelcontextprotocol-python-sdk",
+        "modelcontextprotocol-sequentialthinking",
+        "modelcontextprotocol-time",
     ]
     assert [line.split("  ")[1] for line in listed] == [
         "mcp",
@@ -93,6 +103,13 @@ def test_bundled_catalog_has_one_of_each_kind(tmp_path: Path, monkeypatch) -> No
         "skill",
         "skill",
         "skill",
+        "skill",
+        "skill",
+        "skill",
+        "skill",
+        "skill",
+        "prompt",
+        "prompt",
         "prompt",
         "prompt",
         "package",
@@ -100,7 +117,10 @@ def test_bundled_catalog_has_one_of_each_kind(tmp_path: Path, monkeypatch) -> No
         "mcp",
         "mcp",
         "mcp",
+        "mcp",
         "package",
+        "mcp",
+        "mcp",
     ]
 
     info = cmd_info("anthropics-skill-creator")
@@ -134,7 +154,7 @@ def test_bundled_catalog_has_one_of_each_kind(tmp_path: Path, monkeypatch) -> No
     assert "license: MIT" in own_package
     assert "path:" not in own_package
 
-    matched = cmd_recipes("creator")
+    matched = cmd_recipes("skill-creator")
     assert len(matched) == 1
     assert matched[0].startswith("anthropics-skill-creator")
 

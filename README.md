@@ -67,12 +67,22 @@ The catalog includes these recipes:
 | `anthropics-frontend-design` | skill | [anthropics/skills](https://github.com/anthropics/skills) `skills/frontend-design` |
 | `anthropics-mcp-builder` | skill | [anthropics/skills](https://github.com/anthropics/skills) `skills/mcp-builder` |
 | `anthropics-webapp-testing` | skill | [anthropics/skills](https://github.com/anthropics/skills) `skills/webapp-testing` |
+| `anthropics-claude-api` | skill | [anthropics/skills](https://github.com/anthropics/skills) `skills/claude-api` |
+| `anthropics-canvas-design` | skill | [anthropics/skills](https://github.com/anthropics/skills) `skills/canvas-design` |
+| `anthropics-theme-factory` | skill | [anthropics/skills](https://github.com/anthropics/skills) `skills/theme-factory` |
+| `anthropics-web-artifacts-builder` | skill | [anthropics/skills](https://github.com/anthropics/skills) `skills/web-artifacts-builder` |
+| `anthropics-slack-gif-creator` | skill | [anthropics/skills](https://github.com/anthropics/skills) `skills/slack-gif-creator` |
 | `f-prompts` | prompt | [f/prompts.chat](https://github.com/f/prompts.chat) `PROMPTS.md` |
 | `danielmiessler-summarize` | prompt | [danielmiessler/fabric](https://github.com/danielmiessler/fabric) `data/patterns/summarize/system.md` |
+| `danielmiessler-extract-wisdom` | prompt | [danielmiessler/fabric](https://github.com/danielmiessler/fabric) `data/patterns/extract_wisdom/system.md` |
+| `danielmiessler-explain-code` | prompt | [danielmiessler/fabric](https://github.com/danielmiessler/fabric) `data/patterns/explain_code/system.md` |
 | `modelcontextprotocol-filesystem` | mcp | [modelcontextprotocol/servers](https://github.com/modelcontextprotocol/servers) `src/filesystem` |
 | `modelcontextprotocol-memory` | mcp | [modelcontextprotocol/servers](https://github.com/modelcontextprotocol/servers) `src/memory` |
 | `modelcontextprotocol-fetch` | mcp | [modelcontextprotocol/servers](https://github.com/modelcontextprotocol/servers) `src/fetch` |
 | `modelcontextprotocol-git` | mcp | [modelcontextprotocol/servers](https://github.com/modelcontextprotocol/servers) `src/git` |
+| `modelcontextprotocol-time` | mcp | [modelcontextprotocol/servers](https://github.com/modelcontextprotocol/servers) `src/time` |
+| `modelcontextprotocol-sequentialthinking` | mcp | [modelcontextprotocol/servers](https://github.com/modelcontextprotocol/servers) `src/sequentialthinking` |
+| `modelcontextprotocol-everything` | mcp | [modelcontextprotocol/servers](https://github.com/modelcontextprotocol/servers) `src/everything` |
 | `f-prompts-chat` | package | [f/prompts.chat](https://github.com/f/prompts.chat) `packages/prompts.chat` |
 | `modelcontextprotocol-python-sdk` | package | [modelcontextprotocol/python-sdk](https://github.com/modelcontextprotocol/python-sdk) repository root |
 

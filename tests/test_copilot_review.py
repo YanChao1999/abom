@@ -27,6 +27,11 @@ def test_verdict_problems_reports_a_fail_line() -> None:
     ]
 
 
+def test_one_verdict_accepts_a_generic_pass_line() -> None:
+    review = _review()
+    assert review.one_verdict_problem("modelcontextprotocol-time", "verdict: pass\n") is None
+
+
 def test_verdict_problems_reports_a_missing_recipe() -> None:
     review = _review()
     assert review.verdict_problems("other: pass\n", ["demo-skill"]) == ["demo-skill: no verdict"]
