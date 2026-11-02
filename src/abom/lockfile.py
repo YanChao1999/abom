@@ -1,7 +1,8 @@
-"""Project lock file: pin installed recipe commits."""
+"""Project lock file: pin installed recipe commits and material digests."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -15,6 +16,33 @@ class LockError(Exception):
 
 def default_lock_path(root: Path | None = None) -> Path:
     return (root or Path.cwd()) / DEFAULT_LOCK_NAME
+
+
+def material_digest(root: Path) -> str:
+    """Stable sha256 over file paths and contents under *root*, skipping .git."""
+    digest = hashlib.sha256()
+    if not root.exists():
+        raise LockError(f"material path '{root}' does not exist")
+    files: list[Path] = []
+    if root.is_file():
+        files = [root]
+        base = root.parent
+    else:
+        base = root
+        for path in sorted(root.rglob("*")):
+            if not path.is_file():
+                continue
+            parts = path.relative_to(root).parts
+            if parts and parts[0] == ".git":
+                continue
+            files.append(path)
+    for path in files:
+        relative = path.relative_to(base).as_posix()
+        digest.update(relative.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()
 
 
 def read_lock(path: Path) -> dict[str, dict]:
@@ -38,12 +66,14 @@ def read_lock(path: Path) -> dict[str, dict]:
         commit = entry.get("commit")
         if not isinstance(commit, str) or not commit.strip():
             raise LockError(f"lock entry '{name}' is missing commit")
+        digest = entry.get("digest")
         out[name] = {
             "commit": commit.strip(),
             "git": entry.get("git"),
             "ref": entry.get("ref"),
             "path": entry.get("path"),
             "kind": entry.get("kind"),
+            "digest": digest.strip() if isinstance(digest, str) and digest.strip() else None,
         }
     return out
 
@@ -56,6 +86,7 @@ def write_lock(path: Path, tools: dict[str, dict]) -> None:
                 key: value
                 for key, value in {
                     "commit": entry["commit"],
+                    "digest": entry.get("digest"),
                     "git": entry.get("git"),
                     "ref": entry.get("ref"),
                     "path": entry.get("path"),

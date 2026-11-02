@@ -93,6 +93,26 @@ def tool_wire(workspace: Path, name: str) -> dict:
     return out
 
 
+def write_project(workspace: Path, data: dict) -> None:
+    path = project_config_path(workspace)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "schema": PROJECT_SCHEMA,
+        "agent": data.get("agent"),
+        "tools": data.get("tools") or {},
+    }
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+
+def init_project(workspace: Path | None = None, *, agent: str = "cursor") -> str:
+    root = find_workspace(workspace) if workspace else find_workspace()
+    path = project_config_path(root)
+    if path.is_file():
+        return f"project already initialized -> {path}"
+    write_project(root, {"agent": agent, "tools": {}})
+    return f"initialized project -> {path}"
+
+
 def record_tool_wire(
     workspace: Path,
     name: str,
@@ -110,11 +130,20 @@ def record_tool_wire(
     if global_scope:
         entry["global"] = True
     tools[name] = entry
-    payload = {
-        "schema": PROJECT_SCHEMA,
-        "agent": default_agent or data.get("agent") or agent,
-        "tools": tools,
-    }
-    path = project_config_path(workspace)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    write_project(
+        workspace,
+        {
+            "agent": default_agent or data.get("agent") or agent,
+            "tools": tools,
+        },
+    )
+
+
+def remove_tool_wire(workspace: Path, name: str) -> bool:
+    data = load_project(workspace)
+    tools = dict(data["tools"])
+    if name not in tools:
+        return False
+    del tools[name]
+    write_project(workspace, {"agent": data.get("agent"), "tools": tools})
+    return True

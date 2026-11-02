@@ -16,11 +16,20 @@ from abom.advisory import (
     load_advisories,
 )
 from abom.check import format_report, inspect_checkout, inspect_material, report_to_dict
-from abom.lockfile import LockError, default_lock_path, read_lock, write_lock
+from abom.lockfile import (
+    LockError,
+    default_lock_path,
+    material_digest,
+    read_lock,
+    write_lock,
+)
 from abom.project import (
     ProjectError,
     find_workspace,
+    init_project,
+    load_project,
     record_tool_wire,
+    remove_tool_wire,
     tool_wire,
 )
 from abom.recipe import (
@@ -34,7 +43,7 @@ from abom.recipe import (
     private_catalogs_dir,
     validate_git_url,
 )
-from abom.taps import TapError, add_path_tap, load_tap_entries, remove_tap
+from abom.taps import TapError, add_tap, load_tap_entries, remove_tap, update_taps
 from abom.wire import (
     WireError,
     link_prompt,
@@ -43,7 +52,9 @@ from abom.wire import (
     mcp_server_entry,
     merge_mcp_server,
     prompt_dirs,
+    remove_mcp_server,
     skill_dirs,
+    unlink_path,
 )
 
 
@@ -433,15 +444,24 @@ def cmd_rollback(name: str) -> str:
     return f"rolled back {name} -> {commit}"
 
 
-def cmd_lock(path: Path | None = None) -> str:
+def cmd_lock(path: Path | None = None, *, names: list[str] | None = None) -> str:
     lock_path = path or default_lock_path()
+    selected = names if names is not None else cmd_search(None)
     tools: dict[str, dict] = {}
-    for name in cmd_search(None):
+    for name in selected:
         receipt = _read_receipt(name)
+        checkout = tools_dir() / name
         if receipt is None or not receipt.get("commit"):
             raise AbomError(f"installed tool '{name}' has no receipt commit; reinstall it first")
+        if not checkout.exists() and not checkout.is_symlink():
+            raise AbomError(f"tool '{name}' is not installed")
+        try:
+            digest = material_digest(_material_root(name, checkout))
+        except LockError as exc:
+            raise AbomError(str(exc)) from exc
         tools[name] = {
             "commit": receipt["commit"],
+            "digest": digest,
             "git": receipt.get("git"),
             "ref": receipt.get("ref"),
             "path": receipt.get("path"),
@@ -474,9 +494,125 @@ def cmd_lock_check(path: Path | None = None) -> str:
             continue
         if receipt["commit"] != entry["commit"]:
             problems.append(f"{name}: installed {receipt['commit']}, lock wants {entry['commit']}")
+            continue
+        wanted_digest = entry.get("digest")
+        if isinstance(wanted_digest, str) and wanted_digest:
+            try:
+                actual = material_digest(_material_root(name, checkout))
+            except LockError as exc:
+                problems.append(f"{name}: {exc}")
+                continue
+            if actual != wanted_digest:
+                problems.append(f"{name}: digest mismatch (material changed since lock)")
     if problems:
         raise AbomError("lock check failed:\n" + "\n".join(f"- {item}" for item in problems))
     return f"lock check passed ({len(tools)} tools)"
+
+
+def cmd_init(agent: str = "cursor") -> str:
+    try:
+        return init_project(agent=agent)
+    except ProjectError as exc:
+        raise AbomError(str(exc)) from exc
+
+
+def cmd_add(
+    name: str,
+    *,
+    agent: str | None = None,
+    locked: bool = False,
+    lock_file: Path | None = None,
+) -> list[str]:
+    """Install (if needed), wire into the nearest workspace, and refresh the project lock."""
+    try:
+        workspace = find_workspace()
+    except ProjectError as exc:
+        raise AbomError(str(exc)) from exc
+    lines: list[str] = []
+    checkout = tools_dir() / name
+    if not checkout.exists() and not checkout.is_symlink():
+        lines.append(
+            cmd_install_recipe(name, locked=locked, lock_file=lock_file or default_lock_path())
+            if locked
+            else cmd_install_recipe(name)
+        )
+    lines.append(cmd_use(name, str(workspace), agent=agent))
+    lock_path = lock_file or (workspace / "abom.lock.json")
+    existing: dict[str, dict] = {}
+    if lock_path.is_file():
+        try:
+            existing = read_lock(lock_path)
+        except LockError as exc:
+            raise AbomError(str(exc)) from exc
+    names = sorted({*existing, name})
+    lines.append(cmd_lock(lock_path, names=names))
+    return lines
+
+
+def cmd_unuse(name: str, target_repo: str | None = None) -> str:
+    try:
+        workspace = (
+            Path(target_repo).expanduser().resolve(strict=False)
+            if target_repo
+            else find_workspace()
+        )
+    except ProjectError as exc:
+        raise AbomError(str(exc)) from exc
+    if not workspace.is_dir():
+        raise AbomError(f"workspace '{workspace}' must be an existing directory")
+
+    local = tool_wire(workspace, name)
+    agent = local.get("agent") or load_project(workspace).get("agent") or "cursor"
+    link_name = local.get("link_name") or name
+    global_scope = bool(local.get("global"))
+    messages: list[str] = []
+
+    receipt = _read_receipt(name)
+    kind = (receipt or {}).get("kind")
+    if not kind:
+        try:
+            kind = _load_recipe(name).kind
+        except AbomError:
+            kind = None
+
+    try:
+        if kind == "skill":
+            for directory in skill_dirs(str(agent), workspace):
+                messages.append(unlink_path(directory / link_name, label="skill"))
+        elif kind == "prompt":
+            for directory in prompt_dirs(str(agent), workspace):
+                dest = directory / link_name
+                material_name = None
+                checkout = tools_dir() / name
+                if checkout.exists() or checkout.is_symlink():
+                    material = _material_root(name, checkout)
+                    if material.is_file():
+                        material_name = material.name
+                if material_name:
+                    messages.append(unlink_path(directory / material_name, label="prompt"))
+                messages.append(unlink_path(dest, label="prompt"))
+        elif kind == "mcp":
+            agents = ("cursor", "claude") if agent == "all" else (str(agent),)
+            for item in agents:
+                if item not in {"cursor", "claude"}:
+                    continue
+                path = mcp_config_path(item, workspace, global_scope=global_scope)
+                messages.append(remove_mcp_server(path, link_name))
+        elif kind == "package":
+            messages.append(unlink_path(workspace / ".abom" / link_name, label="package"))
+        else:
+            # Fall back to clearing known locations when kind is unknown.
+            for directory in skill_dirs("all", workspace):
+                messages.append(unlink_path(directory / link_name, label="skill"))
+            for item in ("cursor", "claude"):
+                path = mcp_config_path(item, workspace, global_scope=global_scope)
+                messages.append(remove_mcp_server(path, link_name))
+    except WireError as exc:
+        raise AbomError(str(exc)) from exc
+
+    remove_tool_wire(workspace, name)
+    messages.append(f"removed wire for {name} from {workspace}")
+    return "\n".join(messages)
 
 
 def cmd_catalogs() -> list[str]:
@@ -522,15 +658,24 @@ def cmd_tap_list() -> list[str]:
     lines = ["core  bundled  public trust root"]
     try:
         for entry in load_tap_entries():
-            lines.append(f"{entry['name']}  path  {entry['path']}")
+            kind = entry["kind"]
+            if kind == "path":
+                detail = entry["path"]
+            elif kind == "url":
+                detail = entry["url"]
+            else:
+                detail = (
+                    f"{entry['git']}@{entry.get('ref', 'main')}:{entry.get('path', 'recipes.json')}"
+                )
+            lines.append(f"{entry['name']}  {kind}  {detail}")
     except TapError as exc:
         raise AbomError(str(exc)) from exc
     return lines
 
 
-def cmd_tap_add(name: str, catalog: str) -> str:
+def cmd_tap_add(name: str, source: str, *, ref: str = "main", path: str = "recipes.json") -> str:
     try:
-        return add_path_tap(name, Path(catalog))
+        return add_tap(name, source, ref=ref, path=path)
     except TapError as exc:
         raise AbomError(str(exc)) from exc
 
@@ -538,6 +683,13 @@ def cmd_tap_add(name: str, catalog: str) -> str:
 def cmd_tap_remove(name: str) -> str:
     try:
         return remove_tap(name)
+    except TapError as exc:
+        raise AbomError(str(exc)) from exc
+
+
+def cmd_tap_update(name: str | None = None) -> list[str]:
+    try:
+        return update_taps(name)
     except TapError as exc:
         raise AbomError(str(exc)) from exc
 
@@ -633,6 +785,39 @@ def build_parser() -> argparse.ArgumentParser:
     remove_parser = sub.add_parser("remove", help="Remove an installed tool")
     remove_parser.add_argument("name")
 
+    init_parser = sub.add_parser(
+        "init", help="Initialize .abom/project.json in the nearest workspace"
+    )
+    init_parser.add_argument(
+        "--agent",
+        default="cursor",
+        choices=("cursor", "claude", "copilot", "agents", "codex", "all"),
+        help="Default agent for this project",
+    )
+
+    add_parser = sub.add_parser(
+        "add",
+        help="Install a recipe if needed, wire it into the nearest workspace, and update abom.lock.json",
+    )
+    add_parser.add_argument("name")
+    add_parser.add_argument(
+        "--agent",
+        default=None,
+        choices=("cursor", "claude", "copilot", "agents", "codex", "all"),
+    )
+    add_parser.add_argument("--locked", action="store_true")
+    add_parser.add_argument("--lock-file", type=Path)
+
+    unuse_parser = sub.add_parser(
+        "unuse", help="Remove wiring for a tool from the nearest workspace"
+    )
+    unuse_parser.add_argument("name")
+    unuse_parser.add_argument(
+        "target_repo",
+        nargs="?",
+        help="Workspace root; omit to use the nearest workspace from cwd",
+    )
+
     link_parser = sub.add_parser("link", help="Link an installed tool into a target repository")
     link_parser.add_argument("name")
     link_parser.add_argument("target_repo")
@@ -692,11 +877,21 @@ def build_parser() -> argparse.ArgumentParser:
     tap_parser = sub.add_parser("tap", help="Manage private catalog taps over the public core root")
     tap_sub = tap_parser.add_subparsers(dest="tap_command", required=True)
     tap_sub.add_parser("list", help="List the core trust root and registered taps")
-    tap_add = tap_sub.add_parser("add", help="Register a local catalog JSON as a named tap")
+    tap_add = tap_sub.add_parser(
+        "add", help="Register a local path, https catalog JSON, or git catalog as a named tap"
+    )
     tap_add.add_argument("name")
-    tap_add.add_argument("catalog")
+    tap_add.add_argument("source", help="Local JSON path, https://…/catalog.json, or git URL")
+    tap_add.add_argument("--ref", default="main", help="Git ref when source is a repository")
+    tap_add.add_argument(
+        "--path",
+        default="recipes.json",
+        help="Catalog path inside a git tap (default: recipes.json)",
+    )
     tap_remove = tap_sub.add_parser("remove", help="Remove a registered tap")
     tap_remove.add_argument("name")
+    tap_update = tap_sub.add_parser("update", help="Refresh cached url/git taps")
+    tap_update.add_argument("name", nargs="?")
 
     return parser
 
@@ -741,6 +936,18 @@ def main(argv: list[str] | None = None) -> int:
             print(cmd_advisory(args.id))
         elif args.command == "remove":
             print(cmd_remove(args.name))
+        elif args.command == "init":
+            print(cmd_init(agent=args.agent))
+        elif args.command == "add":
+            for line in cmd_add(
+                args.name,
+                agent=args.agent,
+                locked=args.locked,
+                lock_file=args.lock_file,
+            ):
+                print(line)
+        elif args.command == "unuse":
+            print(cmd_unuse(args.name, args.target_repo))
         elif args.command == "link":
             print(cmd_link(args.name, args.target_repo, args.link_name))
         elif args.command == "use":
@@ -775,9 +982,12 @@ def main(argv: list[str] | None = None) -> int:
                 for line in cmd_tap_list():
                     print(line)
             elif args.tap_command == "add":
-                print(cmd_tap_add(args.name, args.catalog))
+                print(cmd_tap_add(args.name, args.source, ref=args.ref, path=args.path))
             elif args.tap_command == "remove":
                 print(cmd_tap_remove(args.name))
+            elif args.tap_command == "update":
+                for line in cmd_tap_update(args.name):
+                    print(line)
             else:
                 parser.error(f"unknown tap command: {args.tap_command}")
         else:

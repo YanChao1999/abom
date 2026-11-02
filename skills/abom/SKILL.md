@@ -18,21 +18,25 @@ abom recipes [query]
 abom info <name>
 abom show <name>
 abom check <name>
+abom init
+abom add <name>
 abom install <name> [--use --agent cursor]
-abom use <name>   # nearest workspace from cwd; agent from .abom/project.json
+abom use <name>
+abom unuse <name>
 abom upgrade [name]
-abom lock
+abom lock [--check]
 abom sync
 abom rollback <name>
 abom tap list
-abom tap add <name> <catalog.json>
+abom tap add <name> <path|https://…json|git-url>
+abom tap update [name]
 abom catalogs
 abom search [query]
 abom link <name> <target_repo> [--link-name <name>]
 abom remove <name>
 ```
 
-`abom use` / `install --use` wires into the nearest project workspace from cwd (like `uv`: walk up for `.abom`, `abom.lock.json`, `.cursor`, `.git`, else cwd). Agent prefs live in `<workspace>/.abom/project.json`. MCP `cwd`/filesystem args default to that workspace. `abom sync` installs to lock commits. `abom tap` overlays private catalogs on public `core`. Advisories use ids like `ABOM-2026-0001`. `ABOM_HOME` overrides `~/.abom`.
+`abom add` installs if needed, wires the nearest workspace, and updates `abom.lock.json` (commit + material digest). `abom unuse` removes project wiring. Taps accept local JSON, https catalog URLs, or git repos. Advisory feed: `https://yanchao1999.github.io/abom/advisories.json` (`ABOM_ADVISORIES` / `ABOM_ADVISORIES_EXTRA`). `ABOM_HOME` overrides `~/.abom`.
 
 ## Add a recipe
 

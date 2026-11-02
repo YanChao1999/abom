@@ -27,7 +27,7 @@ uv run ruff check .
 uv run pytest
 ```
 
-Version 0.0.3. GitHub Actions runs format, lint, and test on every pull request. A pull request that adds or edits `src/abom/recipes.json` also runs the recipe pull-check. Pushing a `v*` tag publishes a GitHub release, TestPyPI, and PyPI from the same build. Pushes to `main` publish the GitHub Pages site.
+Version 0.0.4. GitHub Actions runs format, lint, and test on every pull request. A pull request that adds or edits `src/abom/recipes.json` also runs the recipe pull-check. Pushing a `v*` tag publishes a GitHub release, TestPyPI, and PyPI from the same build. Pushes to `main` publish the GitHub Pages site.
 
 Trusted publishing uses the GitHub environments `testpypi` and `pypi`. On each index, add this repository as a trusted publisher: workflow `deploy.yml`, and the matching environment name. The PyPI project name is `abom`.
 
@@ -91,14 +91,17 @@ abom recipes
 abom info anthropics-skill-creator
 abom check anthropics-skill-creator
 cd /path/to/project
-abom install anthropics-skill-creator --use --agent cursor
+abom init
+abom add anthropics-skill-creator
 abom use modelcontextprotocol-filesystem
 abom show anthropics-skill-creator
 abom upgrade anthropics-skill-creator
-abom lock
+abom lock --check
 abom sync
+abom unuse anthropics-skill-creator
 abom rollback anthropics-skill-creator
 abom tap add team ./team-catalog.json
+abom tap add remote https://example.com/team.json
 abom catalogs
 ```
 
@@ -127,7 +130,9 @@ abom advisory ABOM-2026-0001
 abom report anthropics-skill-creator
 ```
 
-The rejection rules are versioned in `src/abom/rules.json`. The advisory feed is `src/abom/advisories.json` (override with `ABOM_ADVISORIES`). To publish one, append an object with `id`, `severity`, `summary`, `description`, `published`, and `affected` (`recipe` and/or `git`, optional `commits` / `refs`, or `all_commits: true`).
+Public feed (for subscribe): <https://yanchao1999.github.io/abom/advisories.json>
+
+Set `ABOM_ADVISORIES` to a path or `https://` URL to replace the feed, or `ABOM_ADVISORIES_EXTRA` (`os.pathsep` separated paths/URLs) to overlay additional advisories. The rejection rules are versioned in `src/abom/rules.json`. Bundled source is `src/abom/advisories.json`. To publish one, append an object with `id`, `severity`, `summary`, `description`, `published`, and `affected` (`recipe` and/or `git`, optional `commits` / `refs`, or `all_commits: true`).
 
 ## Commands
 
@@ -135,12 +140,15 @@ The rejection rules are versioned in `src/abom/rules.json`. The advisory feed is
 - `abom install <name> --use [target] [--agent …] [--workspace …]`: install, then wire. Bare `--use` targets the nearest workspace from cwd (uv-style).
 - `abom install <name> --locked`: install the commit pinned in `abom.lock.json`.
 - `abom install <name> <git_url>`: clone a git repository that is not in the catalog.
+- `abom init [--agent …]`: create `<workspace>/.abom/project.json`.
+- `abom add <name>`: install if needed, wire the nearest workspace, and update that project's `abom.lock.json` (includes material digest).
 - `abom use <name> [target_repo] [--agent cursor|claude|copilot|agents|codex|all] [--workspace …]`: wire into a project. With no target, discovers the nearest workspace from cwd (`.abom/`, `abom.lock.json`, `.cursor`, `.git`, …). Agent prefs are stored in `<workspace>/.abom/project.json` and reused on later `use` in that project. MCP `cwd` / filesystem args default to that workspace.
+- `abom unuse <name> [target]`: remove skill/prompt links and MCP entries for the tool from the workspace.
 - `abom upgrade [name]`: move installed catalog checkouts to the current recipe ref tip.
 - `abom rollback <name>`: restore the previous receipt commit.
-- `abom lock` / `abom lock --check`: write or verify `abom.lock.json` from installed receipt commits.
+- `abom lock` / `abom lock --check`: write or verify `abom.lock.json` (commit + optional material digest).
 - `abom sync [--lock-file …]`: install or reinstall tools so they match `abom.lock.json`.
-- `abom tap list` / `abom tap add <name> <catalog.json>` / `abom tap remove <name>`: manage private catalog taps over the public `core` trust root.
+- `abom tap list` / `abom tap add <name> <source>` / `abom tap update [name]` / `abom tap remove <name>`: manage path, `https://…json`, or git catalog taps over the public `core` trust root.
 - `abom catalogs`: list named catalog sources (core, taps, private, extras) and the trust root.
 - `abom recipes [query]`: list recipes, optionally filtered by name, kind, or description.
 - `abom info <name>`: print one catalog entry.

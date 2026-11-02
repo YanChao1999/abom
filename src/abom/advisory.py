@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import os
 import re
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -13,6 +15,8 @@ RULES_SCHEMA = "abom.rules/v1"
 REPORT_SCHEMA = "abom.report/v1"
 ID_RE = re.compile(r"^ABOM-\d{4}-\d{4,}$")
 SEVERITIES = ("critical", "high", "medium", "low")
+URL_RE = re.compile(r"^https?://", re.IGNORECASE)
+DEFAULT_FEED_URL = "https://yanchao1999.github.io/abom/advisories.json"
 
 
 class AdvisoryError(Exception):
@@ -54,11 +58,29 @@ def bundled_rules_path() -> Path:
     return Path(__file__).resolve().parent / "rules.json"
 
 
-def advisories_path() -> Path:
+def advisories_path() -> Path | str:
+    """Primary advisory source: path, URL, or bundled file."""
     override = os.environ.get("ABOM_ADVISORIES")
     if override:
-        return Path(override).expanduser()
+        cleaned = override.strip()
+        if URL_RE.match(cleaned):
+            return cleaned
+        return Path(cleaned).expanduser()
     return bundled_advisories_path()
+
+
+def advisory_extra_sources() -> list[str | Path]:
+    raw = os.environ.get("ABOM_ADVISORIES_EXTRA", "")
+    sources: list[str | Path] = []
+    for part in raw.split(os.pathsep):
+        part = part.strip()
+        if not part:
+            continue
+        if URL_RE.match(part):
+            sources.append(part)
+        else:
+            sources.append(Path(part).expanduser())
+    return sources
 
 
 def load_rules_version(path: Path | None = None) -> str:
@@ -75,13 +97,42 @@ def load_rules_version(path: Path | None = None) -> str:
     return version.strip()
 
 
-def load_advisories(path: Path | None = None) -> list[Advisory]:
-    advisory_file = path or advisories_path()
+def read_advisories_text(source: str | Path) -> tuple[str, str]:
+    """Return (text, label) for a path or http(s) URL."""
+    if isinstance(source, str) and URL_RE.match(source):
+        request = urllib.request.Request(source, headers={"User-Agent": "abom-advisories/1"})
+        try:
+            with urllib.request.urlopen(request, timeout=20) as response:
+                body = response.read().decode("utf-8")
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            raise AdvisoryError(f"could not fetch advisories '{source}': {exc}") from exc
+        return body, source
+    path = Path(source)
     try:
-        text = advisory_file.read_text(encoding="utf-8")
+        return path.read_text(encoding="utf-8"), str(path)
     except OSError as exc:
-        raise AdvisoryError(f"could not read advisories '{advisory_file}': {exc}") from exc
-    return parse_advisories(text, str(advisory_file))
+        raise AdvisoryError(f"could not read advisories '{path}': {exc}") from exc
+
+
+def load_advisories(path: Path | str | None = None) -> list[Advisory]:
+    """Load advisories. Later sources override earlier ids (extras win over primary)."""
+    if path is not None:
+        text, label = read_advisories_text(path)
+        return parse_advisories(text, label)
+
+    sources: list[str | Path] = [advisories_path()]
+    # When ABOM_ADVISORIES replaces the whole feed, still allow extras as overlays.
+    if not os.environ.get("ABOM_ADVISORIES"):
+        sources = [bundled_advisories_path(), *advisory_extra_sources()]
+    else:
+        sources.extend(advisory_extra_sources())
+
+    merged: dict[str, Advisory] = {}
+    for source in sources:
+        text, label = read_advisories_text(source)
+        for item in parse_advisories(text, label):
+            merged[item.id] = item
+    return sorted(merged.values(), key=lambda item: item.id)
 
 
 def parse_advisories(text: str, label: str = "advisories") -> list[Advisory]:
