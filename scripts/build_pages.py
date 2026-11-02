@@ -202,7 +202,7 @@ def _page(rows: str, command_rows: str, advisory_rows: str) -> str:
 <body>
   <main>
     <h1>ab<span>om</span></h1>
-    <p class="lede">Install an agent tool with one command, wire it into the nearest workspace, and pin it with a lock file.</p>
+    <p class="lede">Agent materials as a supply chain: check before install, wire the nearest workspace, pin digests, and subscribe to ABOM advisories.</p>
     <div class="panels">
       <section>
         <h2>Install</h2>

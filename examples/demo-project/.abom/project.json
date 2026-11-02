@@ -1,0 +1,9 @@
+{
+  "schema": "abom.project/v1",
+  "agent": "cursor",
+  "tools": {
+    "abom-skill": {
+      "agent": "cursor"
+    }
+  }
+}

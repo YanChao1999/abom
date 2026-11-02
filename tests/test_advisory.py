@@ -6,7 +6,12 @@ from pathlib import Path
 
 import pytest
 
-from abom.advisory import match_advisories, parse_advisories
+from abom.advisory import (
+    bundled_advisories_path,
+    load_advisories,
+    match_advisories,
+    parse_advisories,
+)
 from abom.cli import (
     AbomError,
     cmd_advisories,
@@ -15,6 +20,14 @@ from abom.cli import (
     cmd_install_recipe,
     cmd_report,
 )
+
+
+def test_bundled_advisories_include_policy_sentinels() -> None:
+    advisories = load_advisories(bundled_advisories_path())
+    ids = {item.id for item in advisories}
+    assert "ABOM-2026-0001" in ids
+    assert "ABOM-2026-0002" in ids
+    assert any("prompt-injection" in item.summary.lower() for item in advisories)
 
 
 def _git(repo: Path, *args: str) -> None:
