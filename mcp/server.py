@@ -20,7 +20,9 @@ if str(_SRC) not in sys.path:
 from abom import __version__
 from abom.cli import (
     AbomError,
+    cmd_add,
     cmd_check,
+    cmd_init,
     cmd_install_recipe,
     cmd_link,
     cmd_recipes,
@@ -32,6 +34,8 @@ from abom.cli import (
     cmd_tap_add,
     cmd_tap_list,
     cmd_tap_remove,
+    cmd_tap_update,
+    cmd_unuse,
     cmd_upgrade,
     cmd_use,
 )
@@ -114,6 +118,36 @@ _TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "init_project",
+        "description": "Initialize .abom/project.json in the nearest workspace.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "agent": {
+                    "type": "string",
+                    "enum": ["cursor", "claude", "copilot", "agents", "codex", "all"],
+                }
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "add_recipe",
+        "description": "Install if needed, wire the nearest workspace, and update abom.lock.json.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "agent": {
+                    "type": "string",
+                    "enum": ["cursor", "claude", "copilot", "agents", "codex", "all"],
+                },
+            },
+            "required": ["name"],
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "use_tool",
         "description": "Wire an installed skill, prompt, or MCP into Cursor, Claude, Copilot, agents, or Codex paths.",
         "inputSchema": {
@@ -130,6 +164,19 @@ _TOOLS: list[dict[str, Any]] = [
                 },
                 "link_name": {"type": "string"},
                 "workspace": {"type": "string"},
+            },
+            "required": ["name"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "unuse_tool",
+        "description": "Remove wiring for a tool from the nearest workspace.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "target_repo": {"type": "string"},
             },
             "required": ["name"],
             "additionalProperties": False,
@@ -174,14 +221,25 @@ _TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "add_tap",
-        "description": "Register a local catalog JSON file as a named private tap.",
+        "description": "Register a local path, https catalog JSON, or git catalog as a named private tap.",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "name": {"type": "string"},
-                "catalog": {"type": "string"},
+                "source": {"type": "string"},
+                "ref": {"type": "string"},
+                "path": {"type": "string"},
             },
-            "required": ["name", "catalog"],
+            "required": ["name", "source"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "update_tap",
+        "description": "Refresh cached url/git taps.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"name": {"type": "string"}},
             "additionalProperties": False,
         },
     },
@@ -279,6 +337,17 @@ def _dispatch(name: str, arguments: dict[str, Any]) -> str:
             _required(arguments, "target_repo"),
             arguments.get("link_name"),
         )
+    if name == "init_project":
+        agent = arguments.get("agent")
+        return cmd_init(agent=agent if isinstance(agent, str) else "cursor")
+    if name == "add_recipe":
+        agent = arguments.get("agent")
+        return "\n".join(
+            cmd_add(
+                _required(arguments, "name"),
+                agent=agent if isinstance(agent, str) else None,
+            )
+        )
     if name == "use_tool":
         target = arguments.get("target_repo")
         agent = arguments.get("agent")
@@ -289,6 +358,12 @@ def _dispatch(name: str, arguments: dict[str, Any]) -> str:
             agent=agent if isinstance(agent, str) else None,
             link_name=arguments.get("link_name"),
             workspace=workspace if isinstance(workspace, str) else None,
+        )
+    if name == "unuse_tool":
+        target = arguments.get("target_repo")
+        return cmd_unuse(
+            _required(arguments, "name"),
+            target if isinstance(target, str) else None,
         )
     if name == "upgrade_tool":
         name_arg = arguments.get("name")
@@ -303,7 +378,20 @@ def _dispatch(name: str, arguments: dict[str, Any]) -> str:
     if name == "list_taps":
         return "\n".join(cmd_tap_list())
     if name == "add_tap":
-        return cmd_tap_add(_required(arguments, "name"), _required(arguments, "catalog"))
+        source = arguments.get("source") or arguments.get("catalog")
+        if not isinstance(source, str) or not source.strip():
+            raise KeyError("source")
+        ref = arguments.get("ref")
+        path = arguments.get("path")
+        return cmd_tap_add(
+            _required(arguments, "name"),
+            source,
+            ref=ref if isinstance(ref, str) else "main",
+            path=path if isinstance(path, str) else "recipes.json",
+        )
+    if name == "update_tap":
+        name_arg = arguments.get("name")
+        return "\n".join(cmd_tap_update(name_arg if isinstance(name_arg, str) else None))
     if name == "remove_tap":
         return cmd_tap_remove(_required(arguments, "name"))
     if name == "remove_tool":

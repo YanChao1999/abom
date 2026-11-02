@@ -5,25 +5,37 @@ from __future__ import annotations
 
 import html
 import json
+import shutil
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CATALOG = ROOT / "src" / "abom" / "recipes.json"
+ADVISORIES = ROOT / "src" / "abom" / "advisories.json"
 SITE = ROOT / "site"
 HOME = "https://yanchao1999.github.io/abom/"
 REPO = "https://github.com/YanChao1999/abom"
+FEED = f"{HOME}advisories.json"
 
 COMMANDS = [
     (
         "install <name> [--use] [--locked]",
         "Install a catalog recipe; bare --use wires the nearest workspace",
     ),
+    (
+        "add <name>",
+        "Install if needed, wire the nearest workspace, and update abom.lock.json",
+    ),
+    ("init [--agent]", "Create .abom/project.json in the nearest workspace"),
     ("use <name> [target]", "Wire into the nearest workspace from cwd (uv-style)"),
+    ("unuse <name>", "Remove project wiring (skills/prompts/mcp + project.json)"),
     ("upgrade [name]", "Move installed checkouts to the recipe ref tip"),
     ("rollback <name>", "Restore the previous receipt commit"),
-    ("lock [--check]", "Write or verify abom.lock.json"),
+    ("lock [--check]", "Write or verify abom.lock.json (commit + material digest)"),
     ("sync", "Install or reinstall tools to match the lock file"),
-    ("tap list|add|remove", "Private catalog taps over the public core trust root"),
+    (
+        "tap list|add|update|remove",
+        "Private path/url/git catalog taps over the public core trust root",
+    ),
     ("catalogs", "List merged catalog sources and the trust root"),
     ("recipes [query]", "List installable recipes"),
     ("info <name>", "Show one catalog entry"),
@@ -40,11 +52,20 @@ COMMANDS = [
 
 def main() -> None:
     catalog = json.loads(CATALOG.read_text(encoding="utf-8"))
+    advisories = json.loads(ADVISORIES.read_text(encoding="utf-8"))
     recipes = sorted(catalog["recipes"], key=lambda recipe: recipe["name"])
+    advisory_entries = advisories.get("advisories") or []
     rows = "\n".join(_row(recipe) for recipe in recipes)
     command_rows = "\n".join(_command_row(command, summary) for command, summary in COMMANDS)
+    advisory_rows = "\n".join(_advisory_row(item) for item in advisory_entries)
+    if not advisory_rows:
+        advisory_rows = (
+            '<tr><td colspan="3">No published advisories yet. '
+            f'Subscribe to <a href="{FEED}"><code>{FEED}</code></a>.</td></tr>'
+        )
     SITE.mkdir(parents=True, exist_ok=True)
-    (SITE / "index.html").write_text(_page(rows, command_rows), encoding="utf-8")
+    shutil.copyfile(ADVISORIES, SITE / "advisories.json")
+    (SITE / "index.html").write_text(_page(rows, command_rows, advisory_rows), encoding="utf-8")
 
 
 def _row(recipe: dict) -> str:
@@ -69,7 +90,14 @@ def _command_row(command: str, summary: str) -> str:
     )
 
 
-def _page(rows: str, command_rows: str) -> str:
+def _advisory_row(item: dict) -> str:
+    advisory_id = html.escape(str(item.get("id") or ""))
+    severity = html.escape(str(item.get("severity") or ""))
+    summary = html.escape(str(item.get("summary") or ""))
+    return f"<tr><td><code>{advisory_id}</code></td><td>{severity}</td><td>{summary}</td></tr>"
+
+
+def _page(rows: str, command_rows: str, advisory_rows: str) -> str:
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -123,9 +151,7 @@ def _page(rows: str, command_rows: str) -> str:
       border: 1px solid var(--line);
       padding: 16px 18px;
     }}
-    .panels h2 {{
-      margin: 0 0 8px;
-    }}
+    .panels h2 {{ margin: 0 0 8px; }}
     .panels p {{
       margin: 0 0 8px;
       color: var(--muted);
@@ -147,9 +173,7 @@ def _page(rows: str, command_rows: str) -> str:
       font-size: 22px;
       margin: 0 0 12px;
     }}
-    section.block {{
-      margin-bottom: 36px;
-    }}
+    section.block {{ margin-bottom: 36px; }}
     table {{
       width: 100%;
       border-collapse: collapse;
@@ -188,16 +212,17 @@ abom install abom-skill</code></pre>
       </section>
       <section>
         <h2>Wire</h2>
-        <p>Bare --use targets the nearest workspace from cwd.</p>
-        <pre><code>abom install abom-skill --use --agent cursor
-abom use modelcontextprotocol-filesystem</code></pre>
+        <p>add wires the nearest workspace and writes the lock.</p>
+        <pre><code>abom init
+abom add abom-skill
+abom unuse abom-skill</code></pre>
       </section>
       <section>
         <h2>Pin</h2>
-        <p>Lock commits, sync a project, and overlay private taps.</p>
-        <pre><code>abom lock
+        <p>Lock digests, sync, and overlay private taps.</p>
+        <pre><code>abom lock --check
 abom sync
-abom tap add team ./team.json</code></pre>
+abom tap add team https://example.com/team.json</code></pre>
       </section>
     </div>
     <section class="block">
@@ -208,6 +233,18 @@ abom tap add team ./team.json</code></pre>
         </thead>
         <tbody>
           {command_rows}
+        </tbody>
+      </table>
+    </section>
+    <section class="block">
+      <h2>Advisories</h2>
+      <p class="lede">Machine-readable feed: <a href="{FEED}"><code>{FEED}</code></a>. Set <code>ABOM_ADVISORIES</code> or <code>ABOM_ADVISORIES_EXTRA</code> to subscribe.</p>
+      <table>
+        <thead>
+          <tr><th>Id</th><th>Severity</th><th>Summary</th></tr>
+        </thead>
+        <tbody>
+          {advisory_rows}
         </tbody>
       </table>
     </section>

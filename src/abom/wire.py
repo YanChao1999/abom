@@ -162,3 +162,29 @@ def merge_mcp_server(config_path: Path, name: str, entry: dict) -> str:
     if previous == entry:
         return f"mcp already configured -> {config_path}"
     return f"configured mcp -> {config_path}"
+
+
+def unlink_path(destination: Path, *, label: str) -> str:
+    if not destination.exists() and not destination.is_symlink():
+        return f"{label} not linked -> {destination}"
+    if destination.is_symlink() or destination.is_file():
+        destination.unlink()
+        return f"unlinked {label} -> {destination}"
+    raise WireError(f"{label} path '{destination}' is not a symlink or file")
+
+
+def remove_mcp_server(config_path: Path, name: str) -> str:
+    if not config_path.is_file():
+        return f"mcp not configured -> {config_path}"
+    try:
+        loaded = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise WireError(f"could not read '{config_path}': {exc}") from exc
+    if not isinstance(loaded, dict):
+        raise WireError(f"'{config_path}' must be a JSON object")
+    servers = loaded.get("mcpServers")
+    if not isinstance(servers, dict) or name not in servers:
+        return f"mcp not configured -> {config_path}"
+    del servers[name]
+    config_path.write_text(json.dumps(loaded, indent=2) + "\n", encoding="utf-8")
+    return f"removed mcp -> {config_path}"

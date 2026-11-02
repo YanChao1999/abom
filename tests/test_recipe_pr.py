@@ -53,13 +53,17 @@ def test_pages_build_lists_catalog_recipes() -> None:
     assert "pip install abom" in page
     assert "abom install abom-skill" in page
     assert "wire it into the nearest workspace" in page
-    assert "abom install abom-skill --use --agent cursor" in page
-    assert "abom use modelcontextprotocol-filesystem" in page
+    assert "abom init" in page
+    assert "abom add abom-skill" in page
+    assert "abom unuse abom-skill" in page
     assert "abom sync" in page
     assert "abom tap add team" in page
     assert "abom lock [--check]" in page
     assert "abom report &lt;name&gt;" in page
     assert "abom advisories [query]" in page
+    assert "Advisories" in page
+    assert "advisories.json" in page
+    assert (Path(__file__).resolve().parents[1] / "site" / "advisories.json").is_file()
     assert "Commands" in page
 
 
