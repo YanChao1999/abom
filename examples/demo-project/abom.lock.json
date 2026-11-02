@@ -1,0 +1,13 @@
+{
+  "schema": "abom.lock/v1",
+  "tools": {
+    "abom-skill": {
+      "commit": "1f1ff91f39ad4d8b6b57cbd37fa3116b053e5645",
+      "digest": "6b64ecf0a49f96e8bc0ee4166967eae1b1785cec2f9642e32a56c17319fd0103",
+      "git": "https://github.com/YanChao1999/abom.git",
+      "ref": "main",
+      "path": "skills/abom",
+      "kind": "skill"
+    }
+  }
+}

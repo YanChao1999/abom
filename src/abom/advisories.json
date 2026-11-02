@@ -1,4 +1,40 @@
 {
   "schema": "abom.advisories/v1",
-  "advisories": []
+  "advisories": [
+    {
+      "id": "ABOM-2026-0001",
+      "severity": "high",
+      "summary": "Prompt-injection instructions in skills or prompts are treated as compromised material.",
+      "description": "abom check rejects skill and prompt materials that tell an agent to ignore, disregard, or override earlier system or developer instructions. This advisory records that compromise class so CI and private taps can pin policy by id (ABOM-2026-0001). No recipe currently listed in the public core catalog is known to be affected; the affected entry is a sentinel name for operators who mirror this policy. See ABOM-RULE-prompt-injection in rules.json.",
+      "published": "2026-11-02",
+      "affected": [
+        {
+          "recipe": "abom-sentinel-prompt-injection",
+          "all_commits": true
+        }
+      ],
+      "references": [
+        "https://yanchao1999.github.io/abom/",
+        "https://yanchao1999.github.io/abom/advisories.json",
+        "https://github.com/YanChao1999/abom/blob/main/src/abom/rules.json"
+      ]
+    },
+    {
+      "id": "ABOM-2026-0002",
+      "severity": "critical",
+      "summary": "Remote-shell install hooks in skills, prompts, or package scripts are treated as compromised material.",
+      "description": "abom check rejects materials that pipe a remote download into a shell (for example curl|bash) inside skills, prompts, or package lifecycle scripts. This advisory records that compromise class for operators. No public core-catalog recipe is known to be affected; the affected entry is a sentinel name. See ABOM-RULE-remote-shell in rules.json.",
+      "published": "2026-11-02",
+      "affected": [
+        {
+          "recipe": "abom-sentinel-remote-shell",
+          "all_commits": true
+        }
+      ],
+      "references": [
+        "https://yanchao1999.github.io/abom/advisories.json",
+        "https://github.com/YanChao1999/abom/blob/main/src/abom/rules.json"
+      ]
+    }
+  ]
 }

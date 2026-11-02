@@ -52,7 +52,7 @@ def test_pages_build_lists_catalog_recipes() -> None:
     assert "abom-skill" in page
     assert "pip install abom" in page
     assert "abom install abom-skill" in page
-    assert "wire it into the nearest workspace" in page
+    assert "Agent materials as a supply chain" in page
     assert "abom init" in page
     assert "abom add abom-skill" in page
     assert "abom unuse abom-skill" in page
@@ -63,7 +63,11 @@ def test_pages_build_lists_catalog_recipes() -> None:
     assert "abom advisories [query]" in page
     assert "Advisories" in page
     assert "advisories.json" in page
-    assert (Path(__file__).resolve().parents[1] / "site" / "advisories.json").is_file()
+    assert "ABOM-2026-0001" in page
+    assert "ABOM-2026-0002" in page
+    feed = Path(__file__).resolve().parents[1] / "site" / "advisories.json"
+    assert feed.is_file()
+    assert "ABOM-2026-0001" in feed.read_text(encoding="utf-8")
     assert "Commands" in page
 
 

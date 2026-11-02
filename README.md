@@ -2,6 +2,17 @@
 
 `abom` is a Python CLI for managing agent materials (skills, prompts, MCP configs) as git-backed tools. The recipe list lives in the repo as `src/abom/recipes.json`. `abom install <name>` looks up that name and clones the git URL stored there.
 
+## Why use abom
+
+If you already install agent skills and MCP servers by hand, abom is for the next step: **treat them like a supply chain**.
+
+- **Check before keep** — kind, license, symlink escape, remote-shell hooks, and prompt-injection text are rejected at install time.
+- **Pin the workspace** — `abom add` wires the nearest project (uv-style) and writes `abom.lock.json` with commit + material digest.
+- **Subscribe to advisories** — ids like `ABOM-2026-0001` work like CVE records for agent materials; feed at https://yanchao1999.github.io/abom/advisories.json.
+- **Private over public** — path, HTTPS, or git taps overlay the public `core` catalog without forking the trust root.
+
+Aimed at people who maintain a pile of Cursor/Claude skills or MCP servers and care about install safety more than a bigger recipe list. See `examples/demo-project` for a checked-in lock file.
+
 ## Package management
 
 Homepage: <https://yanchao1999.github.io/abom/>
