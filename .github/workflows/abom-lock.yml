@@ -1,0 +1,65 @@
+name: abom lock
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  demo-project:
+    name: examples/demo-project sync and advisories
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: examples/demo-project
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install abom from this checkout
+        working-directory: .
+        run: pip install .
+      - name: Sync lock and verify digests
+        env:
+          ABOM_HOME: ${{ runner.temp }}/abom-home
+        run: |
+          abom sync
+          abom lock --check
+      - name: Check and report locked tools
+        env:
+          ABOM_HOME: ${{ runner.temp }}/abom-home
+        run: |
+          python <<'PY'
+          import json
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          lock = json.loads(Path("abom.lock.json").read_text(encoding="utf-8"))
+          tools = lock.get("tools") or {}
+          if not tools:
+              raise SystemExit("abom.lock.json has no tools")
+          failed = False
+          for name in sorted(tools):
+              check = subprocess.run(["abom", "check", name], capture_output=True, text=True)
+              print(check.stdout or check.stderr)
+              if check.returncode != 0:
+                  failed = True
+              report = subprocess.run(
+                  ["abom", "report", name], capture_output=True, text=True, check=True
+              )
+              data = json.loads(report.stdout)
+              Path(f"abom-report-{name}.json").write_text(report.stdout + "\n", encoding="utf-8")
+              hits = data.get("advisories") or []
+              print(f"report {name}: ok={data.get('ok')} advisories={len(hits)}")
+              if not data.get("ok") or hits:
+                  failed = True
+          raise SystemExit(1 if failed else 0)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: abom-demo-reports
+          path: examples/demo-project/abom-report-*.json
+          if-no-files-found: ignore
