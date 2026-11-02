@@ -183,7 +183,9 @@ def test_install_recipe_links_subpath_and_removes_receipt(tmp_path: Path, monkey
 
     message = cmd_install_recipe("local-skill")
     checkout = tools_dir() / "local-skill"
-    assert f"installed local-skill -> {checkout}" == message
+    assert message.startswith("installed local-skill -> ")
+    assert "store" in Path(message.split("-> ", 1)[1]).parts
+    assert checkout.is_symlink()
     assert (checkout / "skills" / "demo" / "SKILL.md").is_file()
 
     receipt = json.loads((home / "receipts" / "local-skill.json").read_text(encoding="utf-8"))

@@ -8,6 +8,7 @@ import pytest
 
 from abom.cli import (
     AbomError,
+    checkout_path,
     cmd_catalogs,
     cmd_install_recipe,
     cmd_lock,
@@ -124,11 +125,13 @@ def test_use_writes_mcp_json(tmp_path: Path, monkeypatch) -> None:
     config = project / ".cursor" / "mcp.json"
     assert "configured mcp" in message
     data = json.loads(config.read_text(encoding="utf-8"))
-    assert data["mcpServers"]["local-mcp"] == {
-        "command": "npx",
-        "args": ["-y", "@example/server-demo"],
-        "cwd": str(project.resolve()),
-    }
+    entry = data["mcpServers"]["local-mcp"]
+    assert entry["command"] == "node"
+    launched = Path(entry["args"][0])
+    assert launched.name == "index.ts"
+    assert launched.is_file()
+    assert "store" in launched.resolve().parts
+    assert entry["cwd"] == str(project.resolve())
 
 
 def test_private_catalog_overrides_bundled_name(tmp_path: Path, monkeypatch) -> None:
@@ -195,8 +198,14 @@ def test_lock_upgrade_and_rollback(tmp_path: Path, monkeypatch) -> None:
     second = json.loads(receipt_path("local-skill").read_text(encoding="utf-8"))
     assert second["commit"] != first
     assert second["previous_commit"] == first
-    with pytest.raises(AbomError, match="lock check failed"):
-        cmd_lock_check(lock_path)
+    assert checkout_path("local-skill", first).is_dir()
+    assert checkout_path("local-skill", second["commit"]).is_dir()
+    assert "lock check passed" in cmd_lock_check(lock_path)
+    assert (
+        (tools_dir() / "local-skill" / "skills" / "demo" / "SKILL.md")
+        .read_text(encoding="utf-8")
+        .endswith("v2\n")
+    )
 
     rolled = cmd_rollback("local-skill")
     assert "rolled back local-skill" in rolled

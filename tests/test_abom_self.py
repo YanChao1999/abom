@@ -85,6 +85,7 @@ def test_mcp_lists_and_shows_abom_recipes(monkeypatch, tmp_path: Path) -> None:
     names = [tool["name"] for tool in listed["result"]["tools"]]
     assert "list_recipes" in names
     assert "install_recipe" in names
+    assert "audit_lock" in names
 
     called = server.handle_message(
         {

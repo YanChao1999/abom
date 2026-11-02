@@ -108,7 +108,7 @@ def test_check_and_show_accept_a_skill_prompt_package_and_mcp(tmp_path: Path, mo
         text = cmd_check(name)
         assert text.startswith("check: pass")
         assert "report: abom.report/v1" in text
-        assert "rules: 1.0.0" in text
+        assert "rules: 1.1.0" in text
         assert "installed: no" in cmd_show(name)
 
     cmd_install_recipe("local-skill")

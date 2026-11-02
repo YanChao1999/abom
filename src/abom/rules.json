@@ -1,34 +1,45 @@
 {
   "schema": "abom.rules/v1",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "rules": [
     {
       "id": "ABOM-RULE-kind-shape",
-      "summary": "Material must match its declared kind (skill, prompt, mcp, or package)."
+      "summary": "Material must match its declared kind (skill, prompt, mcp, or package).",
+      "check": "kind-shape"
     },
     {
       "id": "ABOM-RULE-license-file",
-      "summary": "Checkout license files must satisfy the recipe SPDX license."
+      "summary": "Checkout license files must satisfy the recipe SPDX license.",
+      "check": "license-file"
     },
     {
       "id": "ABOM-RULE-symlink-escape",
-      "summary": "Reject symlinks that point outside the checkout."
+      "summary": "Reject symlinks that point outside the checkout.",
+      "check": "symlink-escape"
     },
     {
       "id": "ABOM-RULE-remote-shell",
-      "summary": "Reject remote-shell patterns in skills, prompts, and package lifecycle scripts."
+      "summary": "Reject remote-shell patterns in the skill tree, prompt text, lifecycle scripts, and the MCP command that will be written.",
+      "pattern": "(?:curl|wget)\\b[^\\n|]*\\|\\s*(?:ba)?sh\\b|base64\\s+(?:-d|--decode)\\b[^\\n|]*\\|\\s*(?:ba)?sh\\b|\\b(?:bash|sh)\\s+-c\\b|/dev/tcp/",
+      "flags": "i",
+      "scan": ["skill-tree", "prompt-text", "lifecycle-scripts", "mcp-command"]
     },
     {
       "id": "ABOM-RULE-prompt-injection",
-      "summary": "Reject instruction-override text that tells an agent to ignore earlier instructions."
+      "summary": "Reject instruction-override text in skill files and prompts.",
+      "pattern": "ignore\\s+(?:all\\s+)?(?:previous|prior|above)\\s+instructions|disregard\\s+(?:all\\s+)?(?:previous|prior|above)\\s+instructions",
+      "flags": "i",
+      "scan": ["skill-tree", "prompt-text"]
     },
     {
       "id": "ABOM-RULE-unsafe-git",
-      "summary": "Reject git URLs that can run a helper during fetch, such as ext::."
+      "summary": "Reject git URLs that can run a helper during fetch, such as ext::.",
+      "check": "unsafe-git"
     },
     {
       "id": "ABOM-RULE-advisory",
-      "summary": "Reject checkouts that match a published abom advisory."
+      "summary": "Reject checkouts that match a published abom advisory.",
+      "check": "advisory"
     }
   ]
 }

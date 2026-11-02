@@ -7,13 +7,17 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from dataclasses import replace
 from pathlib import Path
 
 from abom.advisory import (
     AdvisoryError,
+    advisory_feed_digest,
     format_advisory,
     format_advisory_line,
     load_advisories,
+    load_rules_version,
+    match_advisories,
 )
 from abom.check import format_report, inspect_checkout, inspect_material, report_to_dict
 from abom.lockfile import (
@@ -22,6 +26,14 @@ from abom.lockfile import (
     material_digest,
     read_lock,
     write_lock,
+)
+from abom.policy import (
+    Policy,
+    PolicyError,
+    ensure_policy_advisories,
+    load_policy,
+    policy_advisory_sources,
+    policy_violations,
 )
 from abom.project import (
     ProjectError,
@@ -71,6 +83,13 @@ def tools_dir() -> Path:
     path = abom_home() / "tools"
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def checkout_path(name: str, commit: str) -> Path:
+    """Content-addressed checkout. Two commits of one recipe do not share a tree."""
+    if not commit or commit in {".", ".."} or "/" in commit or "\\" in commit:
+        raise AbomError(f"invalid commit '{commit}'")
+    return abom_home() / "store" / name / commit
 
 
 def receipts_dir() -> Path:
@@ -146,21 +165,230 @@ def cmd_install(name: str, git_url: str) -> str:
     return f"installed {name} -> {destination}"
 
 
+def _commits_match(actual: str, wanted: str) -> bool:
+    return actual == wanted or actual.startswith(wanted) or wanted.startswith(actual)
+
+
+def _policy_for(root: Path | None = None) -> Policy | None:
+    try:
+        workspace = root if root is not None else find_workspace()
+    except ProjectError as exc:
+        raise AbomError(str(exc)) from exc
+    try:
+        return load_policy(workspace)
+    except PolicyError as exc:
+        raise AbomError(str(exc)) from exc
+
+
+def _active_link(name: str) -> Path:
+    return tools_dir() / name
+
+
+def _activate_link(name: str, commit: str) -> Path:
+    """Point tools/<name> at one stored tree. Other commits stay on disk."""
+    target = checkout_path(name, commit)
+    link = _active_link(name)
+    desired = Path(os.path.relpath(target, link.parent))
+    if link.is_symlink() and os.readlink(link) == str(desired):
+        return target
+    if link.is_symlink() or (link.exists() and not link.is_dir()):
+        link.unlink()
+    elif link.exists():
+        shutil.rmtree(link)
+    link.symlink_to(desired, target_is_directory=True)
+    return target
+
+
+def _activate_receipt(recipe: Recipe, commit: str) -> None:
+    existing = _read_receipt(recipe.name)
+    previous = None
+    if existing and isinstance(existing.get("commit"), str) and existing["commit"] != commit:
+        previous = existing["commit"]
+    _write_receipt(recipe, commit, previous_commit=previous)
+    _activate_link(recipe.name, commit)
+
+
+def _active_checkout(name: str) -> Path:
+    link = _active_link(name)
+    if not link.exists() and not link.is_symlink():
+        raise AbomError(f"tool '{name}' is not installed")
+    return link.resolve() if link.is_symlink() else link
+
+
+def _checkout_for_use(name: str, workspace: Path) -> Path:
+    lock_path = workspace / "abom.lock.json"
+    if lock_path.is_file():
+        try:
+            tools = read_lock(lock_path)
+        except LockError as exc:
+            raise AbomError(str(exc)) from exc
+        entry = tools.get(name)
+        commit = entry.get("commit") if entry else None
+        if isinstance(commit, str) and commit:
+            dest = checkout_path(name, commit)
+            if not dest.exists():
+                raise AbomError(f"tool '{name}' commit {commit} is not in the store; run abom sync")
+            return dest
+    return _active_checkout(name)
+
+
+def _checkout_commit(checkout: Path) -> str | None:
+    try:
+        return git_stdout(["rev-parse", "HEAD"], cwd=checkout)
+    except AbomError:
+        return None
+
+
+def _tree_material(checkout: Path, subpath: object) -> Path:
+    if not isinstance(subpath, str) or not subpath.strip():
+        return checkout
+    material = checkout / subpath
+    if not material.exists() and not material.is_symlink():
+        raise AbomError(f"installed material is missing path '{subpath}'")
+    return material
+
+
+def _write_project_lock(lock_path: Path, name: str, *, keep_existing: bool) -> str:
+    """Update one lock entry. An existing pin is kept when the project already recorded it."""
+    existing: dict[str, dict] = {}
+    if lock_path.is_file():
+        try:
+            existing = read_lock(lock_path)
+        except LockError as exc:
+            raise AbomError(str(exc)) from exc
+    current = existing.get(name) or {}
+    pinned = current.get("commit") if keep_existing else None
+    if isinstance(pinned, str) and checkout_path(name, pinned).exists():
+        receipt = _read_receipt(name) or {}
+        receipt = {
+            "commit": pinned,
+            "git": current.get("git") or receipt.get("git"),
+            "ref": current.get("ref") or receipt.get("ref"),
+            "path": current.get("path") if current.get("path") is not None else receipt.get("path"),
+            "kind": current.get("kind") or receipt.get("kind"),
+        }
+        checkout = checkout_path(name, pinned)
+    else:
+        receipt = _read_receipt(name)
+        if receipt is None or not receipt.get("commit"):
+            raise AbomError(f"installed tool '{name}' has no receipt commit; reinstall it first")
+        checkout = checkout_path(name, receipt["commit"])
+        if not checkout.exists():
+            checkout = _active_checkout(name)
+    try:
+        digest = material_digest(_tree_material(checkout, receipt.get("path")))
+    except LockError as exc:
+        raise AbomError(str(exc)) from exc
+    existing[name] = _lock_entry(receipt, digest, lock_path)
+    try:
+        write_lock(lock_path, existing)
+    except OSError as exc:
+        raise AbomError(f"could not write lock file '{lock_path}': {exc}") from exc
+    return f"wrote {lock_path} ({len(existing)} tools)"
+
+
+def _lock_entry(receipt: dict, digest: str, lock_path: Path) -> dict:
+    policy = _policy_for(lock_path.parent)
+    try:
+        rules_version = load_rules_version()
+        feed = advisory_feed_digest(policy_advisory_sources(policy))
+    except (AdvisoryError, PolicyError) as exc:
+        raise AbomError(str(exc)) from exc
+    return {
+        "commit": receipt["commit"],
+        "digest": digest,
+        "rules_version": rules_version,
+        "advisory_digest": feed,
+        "git": receipt.get("git"),
+        "ref": receipt.get("ref"),
+        "path": receipt.get("path"),
+        "kind": receipt.get("kind"),
+    }
+
+
+def _recipe_for_lock_entry(name: str, entry: dict) -> Recipe:
+    recipe = _load_recipe(name)
+    git = entry.get("git")
+    if not isinstance(git, str) or not git.strip():
+        return recipe
+    ref = entry.get("ref")
+    path = entry.get("path")
+    return replace(
+        recipe,
+        git=git.strip(),
+        ref=ref.strip() if isinstance(ref, str) and ref.strip() else recipe.ref,
+        path=path.strip() if isinstance(path, str) and path.strip() else recipe.path,
+    )
+
+
+def _publish_tree(recipe: Recipe, fresh: Path, policy: Policy | None) -> tuple[Path, str]:
+    commit = git_stdout(["rev-parse", "HEAD"], cwd=fresh)
+    report = inspect_material(recipe, fresh, commit=commit, policy=policy)
+    if not report.ok:
+        raise AbomError(format_report(report))
+    dest = checkout_path(recipe.name, commit)
+    if not dest.exists():
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(fresh), str(dest))
+    return dest, commit
+
+
+def ensure_checkout(
+    recipe: Recipe,
+    commit: str | None = None,
+    *,
+    policy: Policy | None = None,
+    activate: bool = True,
+) -> tuple[Path, str]:
+    """Install recipe@commit under the store. A different commit is left in place."""
+    if commit:
+        dest = checkout_path(recipe.name, commit)
+        if dest.exists():
+            actual = git_stdout(["rev-parse", "HEAD"], cwd=dest)
+            if not _commits_match(actual, commit):
+                raise AbomError(f"store at {dest} is {actual}, expected {commit}")
+            report = inspect_material(recipe, dest, commit=actual, policy=policy)
+            if not report.ok:
+                raise AbomError(format_report(report))
+            if activate:
+                _activate_receipt(recipe, actual)
+            return dest, actual
+        with tempfile.TemporaryDirectory(prefix="abom-store-") as temporary:
+            fresh = Path(temporary) / recipe.name
+            _clone_at_commit(recipe.git, commit, fresh)
+            actual = git_stdout(["rev-parse", "HEAD"], cwd=fresh)
+            if not _commits_match(actual, commit):
+                raise AbomError(f"checked out {actual}, expected lock commit {commit}")
+            dest, actual = _publish_tree(recipe, fresh, policy)
+        if activate:
+            _activate_receipt(recipe, actual)
+        return dest, actual
+
+    with tempfile.TemporaryDirectory(prefix="abom-store-") as temporary:
+        fresh = Path(temporary) / recipe.name
+        _clone_recipe(recipe, fresh)
+        dest, actual = _publish_tree(recipe, fresh, policy)
+    if activate:
+        _activate_receipt(recipe, actual)
+    return dest, actual
+
+
 def cmd_install_recipe(
     name: str,
     *,
     locked: bool = False,
     lock_file: Path | None = None,
     use_target: str | None = None,
-    agent: str = "cursor",
+    agent: str | None = None,
     workspace: str | None = None,
 ) -> str:
     recipe = _load_recipe(name)
-    destination = tools_dir() / recipe.name
-    if destination.exists() or destination.is_symlink():
+    link = _active_link(recipe.name)
+    if link.exists() or link.is_symlink():
         raise AbomError(f"tool '{recipe.name}' already installed")
 
     pin: str | None = None
+    policy_root: Path | None = None
     if locked:
         try:
             tools = read_lock(lock_file or default_lock_path())
@@ -170,21 +398,22 @@ def cmd_install_recipe(
         if entry is None:
             raise AbomError(f"lock file has no entry for '{recipe.name}'")
         pin = entry["commit"]
+        policy_root = (lock_file or default_lock_path()).parent
+    if use_target is not None:
+        if use_target in {".", ""}:
+            try:
+                policy_root = find_workspace()
+            except ProjectError as exc:
+                raise AbomError(str(exc)) from exc
+        else:
+            policy_root = Path(use_target).expanduser().resolve(strict=False)
+    policy = _policy_for(policy_root)
 
     try:
-        if pin:
-            _clone_at_commit(recipe.git, pin, destination)
-        else:
-            _clone_recipe(recipe, destination)
-        commit = git_stdout(["rev-parse", "HEAD"], cwd=destination)
-        if pin and commit != pin and not commit.startswith(pin) and not pin.startswith(commit):
-            raise AbomError(f"checked out {commit}, expected lock commit {pin}")
-        report = inspect_material(recipe, destination, commit=commit)
-        if not report.ok:
-            raise AbomError(format_report(report))
-        _write_receipt(recipe, commit)
+        destination, _commit = ensure_checkout(recipe, pin, policy=policy)
     except Exception:
-        _discard_checkout(destination)
+        if link.is_symlink() or (link.exists() and not link.is_dir()):
+            link.unlink()
         raise
     lines = [f"installed {recipe.name} -> {destination}"]
     if use_target is not None:
@@ -248,7 +477,9 @@ def cmd_show(name: str) -> str:
     commit = receipt.get("commit") if receipt else None
     if not isinstance(commit, str):
         commit = None
-    lines.append(format_report(inspect_material(recipe, checkout, commit=commit)))
+    lines.append(
+        format_report(inspect_material(recipe, checkout, commit=commit, policy=_policy_for()))
+    )
     return "\n".join(lines)
 
 
@@ -274,21 +505,27 @@ def cmd_search(query: str | None) -> list[str]:
 
 
 def cmd_remove(name: str) -> str:
-    destination = tools_dir() / name
+    destination = _active_link(name)
     if not destination.exists() and not destination.is_symlink():
         raise AbomError(f"tool '{name}' is not installed")
+    receipt = _read_receipt(name)
     if destination.is_symlink() or not destination.is_dir():
         destination.unlink()
     else:
         shutil.rmtree(destination)
-    receipt = receipt_path(name)
-    if receipt.exists():
-        receipt.unlink()
+    if receipt and isinstance(receipt.get("commit"), str):
+        _discard_checkout(checkout_path(name, receipt["commit"]))
+        parent = checkout_path(name, receipt["commit"]).parent
+        if parent.is_dir() and not any(parent.iterdir()):
+            parent.rmdir()
+    receipt_file = receipt_path(name)
+    if receipt_file.exists():
+        receipt_file.unlink()
     return f"removed {name}"
 
 
 def cmd_link(name: str, target_repo: str, link_name: str | None) -> str:
-    source_entry = tools_dir() / name
+    source_entry = _active_link(name)
     if not source_entry.exists() and not source_entry.is_symlink():
         raise AbomError(f"tool '{name}' is not installed")
     source_entry = _material_root(name, source_entry)
@@ -325,17 +562,8 @@ def cmd_use(
     link_name: str | None = None,
     global_scope: bool = False,
     workspace: str | None = None,
+    commit: str | None = None,
 ) -> str:
-    checkout = tools_dir() / name
-    if not checkout.exists() and not checkout.is_symlink():
-        raise AbomError(f"tool '{name}' is not installed")
-    receipt = _read_receipt(name)
-    kind = (receipt or {}).get("kind")
-    if not kind:
-        recipe = _load_recipe(name)
-        kind = recipe.kind
-    material = _material_root(name, checkout)
-
     try:
         if target_repo:
             target_root = Path(target_repo).expanduser().resolve(strict=False)
@@ -345,6 +573,20 @@ def cmd_use(
             target_root = find_workspace()
     except ProjectError as exc:
         raise AbomError(str(exc)) from exc
+
+    if commit:
+        checkout = checkout_path(name, commit)
+        if not checkout.exists():
+            raise AbomError(f"tool '{name}' commit {commit} is not in the store; run abom sync")
+    else:
+        checkout = _checkout_for_use(name, target_root)
+    receipt = _read_receipt(name)
+    kind = (receipt or {}).get("kind")
+    if not kind:
+        recipe = _load_recipe(name)
+        kind = recipe.kind
+    # Resolve so the project link targets store/<name>/<commit>, not the shared tools symlink.
+    material = _material_root(name, checkout).resolve()
 
     try:
         local = tool_wire(target_root, name)
@@ -391,12 +633,14 @@ def cmd_use(
         raise AbomError(str(exc)) from exc
 
     try:
+        wired_commit = _checkout_commit(checkout)
         record_tool_wire(
             target_root,
             name,
             agent=resolved_agent,
             link_name=final_name if final_name != name else None,
             global_scope=global_scope,
+            commit=wired_commit,
         )
     except ProjectError as exc:
         raise AbomError(str(exc)) from exc
@@ -425,48 +669,38 @@ def cmd_rollback(name: str) -> str:
     if not isinstance(git_url, str) or not git_url.strip():
         raise AbomError(f"receipt for '{name}' is missing git")
     recipe = _recipe_from_receipt(receipt)
-    destination = tools_dir() / name
-    if not destination.exists() and not destination.is_symlink():
+    if not _active_link(name).exists() and not _active_link(name).is_symlink():
         raise AbomError(f"tool '{name}' is not installed")
 
-    with tempfile.TemporaryDirectory(prefix="abom-rollback-") as temporary:
-        fresh = Path(temporary) / name
-        _clone_at_commit(git_url, previous.strip(), fresh)
-        commit = git_stdout(["rev-parse", "HEAD"], cwd=fresh)
-        report = inspect_material(recipe, fresh, commit=commit)
-        if not report.ok:
-            raise AbomError(format_report(report))
-        current = receipt.get("commit")
-        _replace_checkout(destination, fresh)
-        _write_receipt(
-            recipe, commit, previous_commit=current if isinstance(current, str) else None
-        )
-    return f"rolled back {name} -> {commit}"
+    policy = _policy_for()
+    dest, commit = ensure_checkout(recipe, previous.strip(), policy=policy)
+    return f"rolled back {name} -> {commit if commit else dest.name}"
 
 
 def cmd_lock(path: Path | None = None, *, names: list[str] | None = None) -> str:
     lock_path = path or default_lock_path()
     selected = names if names is not None else cmd_search(None)
     tools: dict[str, dict] = {}
-    for name in selected:
-        receipt = _read_receipt(name)
-        checkout = tools_dir() / name
-        if receipt is None or not receipt.get("commit"):
-            raise AbomError(f"installed tool '{name}' has no receipt commit; reinstall it first")
-        if not checkout.exists() and not checkout.is_symlink():
-            raise AbomError(f"tool '{name}' is not installed")
+    if names is not None and lock_path.is_file():
         try:
-            digest = material_digest(_material_root(name, checkout))
+            tools = read_lock(lock_path)
         except LockError as exc:
             raise AbomError(str(exc)) from exc
-        tools[name] = {
-            "commit": receipt["commit"],
-            "digest": digest,
-            "git": receipt.get("git"),
-            "ref": receipt.get("ref"),
-            "path": receipt.get("path"),
-            "kind": receipt.get("kind"),
-        }
+    for name in selected:
+        receipt = _read_receipt(name)
+        if receipt is None or not receipt.get("commit"):
+            raise AbomError(f"installed tool '{name}' has no receipt commit; reinstall it first")
+        checkout = checkout_path(name, receipt["commit"])
+        if not checkout.exists():
+            link = _active_link(name)
+            if not link.exists() and not link.is_symlink():
+                raise AbomError(f"tool '{name}' is not installed")
+            checkout = link.resolve() if link.is_symlink() else link
+        try:
+            digest = material_digest(_tree_material(checkout, receipt.get("path")))
+        except LockError as exc:
+            raise AbomError(str(exc)) from exc
+        tools[name] = _lock_entry(receipt, digest, lock_path)
     try:
         write_lock(lock_path, tools)
     except OSError as exc:
@@ -482,28 +716,37 @@ def cmd_lock_check(path: Path | None = None) -> str:
         raise AbomError(str(exc)) from exc
     if not tools:
         raise AbomError(f"lock file '{lock_path}' has no tools")
+    policy = _policy_for(lock_path.parent)
+    try:
+        current_rules = load_rules_version()
+        current_feed = advisory_feed_digest(policy_advisory_sources(policy))
+    except (AdvisoryError, PolicyError) as exc:
+        raise AbomError(str(exc)) from exc
     problems: list[str] = []
     for name, entry in tools.items():
-        receipt = _read_receipt(name)
-        checkout = tools_dir() / name
-        if not checkout.exists() and not checkout.is_symlink():
-            problems.append(f"{name}: not installed")
-            continue
-        if receipt is None or not receipt.get("commit"):
-            problems.append(f"{name}: missing receipt commit")
-            continue
-        if receipt["commit"] != entry["commit"]:
-            problems.append(f"{name}: installed {receipt['commit']}, lock wants {entry['commit']}")
+        checkout = checkout_path(name, entry["commit"])
+        if not checkout.exists():
+            problems.append(f"{name}: commit {entry['commit']} is not in the store")
             continue
         wanted_digest = entry.get("digest")
         if isinstance(wanted_digest, str) and wanted_digest:
             try:
-                actual = material_digest(_material_root(name, checkout))
+                actual = material_digest(_tree_material(checkout, entry.get("path")))
             except LockError as exc:
                 problems.append(f"{name}: {exc}")
                 continue
             if actual != wanted_digest:
                 problems.append(f"{name}: digest mismatch (material changed since lock)")
+        rules_version = entry.get("rules_version")
+        if not isinstance(rules_version, str) or not rules_version:
+            problems.append(f"{name}: lock entry is missing rules_version")
+        elif rules_version != current_rules:
+            problems.append(f"{name}: rules version {rules_version} != {current_rules}")
+        feed = entry.get("advisory_digest")
+        if not isinstance(feed, str) or not feed:
+            problems.append(f"{name}: lock entry is missing advisory_digest")
+        elif feed != current_feed:
+            problems.append(f"{name}: advisory feed digest changed since lock")
     if problems:
         raise AbomError("lock check failed:\n" + "\n".join(f"- {item}" for item in problems))
     return f"lock check passed ({len(tools)} tools)"
@@ -528,24 +771,24 @@ def cmd_add(
         workspace = find_workspace()
     except ProjectError as exc:
         raise AbomError(str(exc)) from exc
-    lines: list[str] = []
-    checkout = tools_dir() / name
-    if not checkout.exists() and not checkout.is_symlink():
-        lines.append(
-            cmd_install_recipe(name, locked=locked, lock_file=lock_file or default_lock_path())
-            if locked
-            else cmd_install_recipe(name)
-        )
-    lines.append(cmd_use(name, str(workspace), agent=agent))
+    policy = _policy_for(workspace)
+    recipe = _load_recipe(name)
     lock_path = lock_file or (workspace / "abom.lock.json")
-    existing: dict[str, dict] = {}
-    if lock_path.is_file():
+    pin: str | None = None
+    if locked:
         try:
-            existing = read_lock(lock_path)
+            pinned = read_lock(lock_file or lock_path)
         except LockError as exc:
             raise AbomError(str(exc)) from exc
-    names = sorted({*existing, name})
-    lines.append(cmd_lock(lock_path, names=names))
+        entry = pinned.get(name)
+        if entry is None:
+            raise AbomError(f"lock file has no entry for '{name}'")
+        pin = entry["commit"]
+    # Always materialize the requested commit. An older pin of the same name stays in the store.
+    destination, installed_commit = ensure_checkout(recipe, pin, policy=policy)
+    lines: list[str] = [f"installed {name} -> {destination}"]
+    lines.append(cmd_use(name, str(workspace), agent=agent, commit=installed_commit))
+    lines.append(_write_project_lock(lock_path, name, keep_existing=False))
     return lines
 
 
@@ -635,23 +878,97 @@ def cmd_sync(lock_file: Path | None = None) -> list[str]:
         raise AbomError(str(exc)) from exc
     if not tools:
         raise AbomError(f"lock file '{path}' has no tools")
+    policy = _policy_for(path.parent)
     lines: list[str] = []
     for name, entry in tools.items():
-        checkout = tools_dir() / name
-        receipt = _read_receipt(name)
         wanted = entry["commit"]
-        if checkout.exists() or checkout.is_symlink():
-            current = receipt.get("commit") if receipt else None
-            if current == wanted:
-                lines.append(f"ok {name} @ {wanted}")
-                continue
-            cmd_remove(name)
-            lines.append(cmd_install_recipe(name, locked=True, lock_file=path))
-            lines.append(f"synced {name} -> {wanted}")
-        else:
-            lines.append(cmd_install_recipe(name, locked=True, lock_file=path))
-            lines.append(f"synced {name} -> {wanted}")
+        stored = checkout_path(name, wanted)
+        receipt = _read_receipt(name)
+        if stored.exists() and receipt and receipt.get("commit") == wanted:
+            wanted_digest = entry.get("digest")
+            if isinstance(wanted_digest, str) and wanted_digest:
+                try:
+                    actual = material_digest(
+                        _tree_material(stored, entry.get("path") or receipt.get("path"))
+                    )
+                except LockError as exc:
+                    raise AbomError(str(exc)) from exc
+                if actual != wanted_digest:
+                    raise AbomError(f"{name}: digest mismatch (material changed since lock)")
+            lines.append(f"ok {name} @ {wanted}")
+            continue
+        recipe = _recipe_for_lock_entry(name, entry)
+        _destination, commit = ensure_checkout(recipe, wanted, policy=policy)
+        lines.append(f"synced {name} -> {commit}")
     return lines
+
+
+def cmd_audit(lock_file: Path | None = None) -> str:
+    """Replay advisories and project policy against a lock file. Does not install."""
+    path = (lock_file or default_lock_path()).expanduser()
+    try:
+        tools = read_lock(path)
+    except LockError as exc:
+        raise AbomError(str(exc)) from exc
+    if not tools:
+        raise AbomError(f"lock file '{path}' has no tools")
+    try:
+        policy = load_policy(path.parent)
+        ensure_policy_advisories(policy)
+        extra = policy_advisory_sources(policy)
+        rules_version = load_rules_version()
+        feed = advisory_feed_digest(extra)
+    except (AdvisoryError, PolicyError) as exc:
+        raise AbomError(str(exc)) from exc
+
+    lines = [
+        "audit: pass",
+        f"lock: {path}",
+        f"rules: {rules_version}",
+        f"advisory_digest: {feed}",
+    ]
+    failed = False
+    for name, entry in tools.items():
+        notes: list[str] = []
+        try:
+            hits = match_advisories(
+                recipe_name=name,
+                git=entry.get("git") or "",
+                commit=entry.get("commit"),
+                ref=entry.get("ref") if isinstance(entry.get("ref"), str) else None,
+                extra=extra or None,
+            )
+        except AdvisoryError as exc:
+            failed = True
+            lines.append(f"- {name}: {exc}")
+            continue
+        locked_rules = entry.get("rules_version")
+        if isinstance(locked_rules, str) and locked_rules != rules_version:
+            notes.append(f"rules {locked_rules} != {rules_version}")
+            failed = True
+        locked_feed = entry.get("advisory_digest")
+        if isinstance(locked_feed, str) and locked_feed != feed:
+            notes.append("advisory feed changed since lock")
+            failed = True
+        kind = entry.get("kind") if isinstance(entry.get("kind"), str) else None
+        license_id = None
+        try:
+            license_id = load_recipe(name).license
+        except RecipeError:
+            license_id = None
+        for violation in policy_violations(policy, kind=kind, license_id=license_id):
+            notes.append(violation)
+            failed = True
+        if hits:
+            failed = True
+            notes.append("advisories: " + ", ".join(hit.advisory.id for hit in hits))
+        else:
+            notes.append("advisories: none")
+        lines.append(f"- {name} @ {entry['commit']}  " + "; ".join(notes))
+    if failed:
+        lines[0] = "audit: fail"
+        raise AbomError("\n".join(lines))
+    return "\n".join(lines)
 
 
 def cmd_tap_list() -> list[str]:
@@ -868,9 +1185,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     sync_parser = sub.add_parser(
-        "sync", help="Install or reinstall tools so they match abom.lock.json"
+        "sync",
+        help="Install stored commits so they match abom.lock.json without removing other pins",
     )
     sync_parser.add_argument("--lock-file", type=Path, help="Lock file path")
+
+    audit_parser = sub.add_parser(
+        "audit",
+        help="Replay advisories and project policy against a lock file without installing",
+    )
+    audit_parser.add_argument("--lock-file", type=Path, help="Lock file path")
 
     sub.add_parser("catalogs", help="List merged catalog taps and the private catalogs directory")
 
@@ -974,6 +1298,8 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "sync":
             for line in cmd_sync(args.lock_file):
                 print(line)
+        elif args.command == "audit":
+            print(cmd_audit(args.lock_file))
         elif args.command == "catalogs":
             for line in cmd_catalogs():
                 print(line)
@@ -1008,21 +1334,20 @@ def _load_recipe(name: str) -> Recipe:
 
 def _inspect_named(name: str):
     recipe = _load_recipe(name)
-    checkout = tools_dir() / recipe.name
-    if checkout.exists() or checkout.is_symlink():
+    policy = _policy_for()
+    link = _active_link(recipe.name)
+    if link.exists() or link.is_symlink():
+        checkout = link.resolve() if link.is_symlink() else link
         receipt = _read_receipt(name)
         commit = receipt.get("commit") if receipt else None
         if not isinstance(commit, str):
-            try:
-                commit = git_stdout(["rev-parse", "HEAD"], cwd=checkout)
-            except AbomError:
-                commit = None
-        return inspect_material(recipe, checkout, commit=commit)
+            commit = _checkout_commit(checkout)
+        return inspect_material(recipe, checkout, commit=commit, policy=policy)
     with tempfile.TemporaryDirectory(prefix="abom-check-") as temporary:
         destination = Path(temporary) / recipe.name
         _clone_recipe(recipe, destination)
         commit = git_stdout(["rev-parse", "HEAD"], cwd=destination)
-        return inspect_material(recipe, destination, commit=commit)
+        return inspect_material(recipe, destination, commit=commit, policy=policy)
 
 
 def _clone_recipe(recipe: Recipe, destination: Path) -> None:
@@ -1048,41 +1373,19 @@ def _upgrade_one(name: str) -> str:
     if receipt is None:
         raise AbomError(f"tool '{name}' has no receipt; only catalog installs can be upgraded")
     recipe = _recipe_from_receipt(receipt)
-    destination = tools_dir() / name
-    if not destination.exists() and not destination.is_symlink():
+    if not _active_link(name).exists() and not _active_link(name).is_symlink():
         raise AbomError(f"tool '{name}' is not installed")
     old_commit = receipt.get("commit")
+    policy = _policy_for()
     with tempfile.TemporaryDirectory(prefix="abom-upgrade-") as temporary:
         fresh = Path(temporary) / name
         _clone_recipe(recipe, fresh)
         new_commit = git_stdout(["rev-parse", "HEAD"], cwd=fresh)
-        report = inspect_material(recipe, fresh, commit=new_commit)
-        if not report.ok:
-            raise AbomError(format_report(report))
         if isinstance(old_commit, str) and new_commit == old_commit:
             return f"unchanged {name} @ {new_commit}"
-        _replace_checkout(destination, fresh)
-        _write_receipt(
-            recipe,
-            new_commit,
-            previous_commit=old_commit if isinstance(old_commit, str) else None,
-        )
+        _publish_tree(recipe, fresh, policy)
+    _activate_receipt(recipe, new_commit)
     return f"upgraded {name} -> {new_commit}"
-
-
-def _replace_checkout(destination: Path, fresh: Path) -> None:
-    backup = destination.with_name(destination.name + ".abom-old")
-    if backup.exists() or backup.is_symlink():
-        _discard_checkout(backup)
-    destination.rename(backup)
-    try:
-        shutil.move(str(fresh), str(destination))
-    except Exception:
-        if destination.exists() or destination.is_symlink():
-            _discard_checkout(destination)
-        backup.rename(destination)
-        raise
-    _discard_checkout(backup)
 
 
 def _material_root(name: str, checkout: Path) -> Path:

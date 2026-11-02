@@ -67,6 +67,8 @@ def read_lock(path: Path) -> dict[str, dict]:
         if not isinstance(commit, str) or not commit.strip():
             raise LockError(f"lock entry '{name}' is missing commit")
         digest = entry.get("digest")
+        rules_version = entry.get("rules_version")
+        advisory_digest = entry.get("advisory_digest")
         out[name] = {
             "commit": commit.strip(),
             "git": entry.get("git"),
@@ -74,6 +76,12 @@ def read_lock(path: Path) -> dict[str, dict]:
             "path": entry.get("path"),
             "kind": entry.get("kind"),
             "digest": digest.strip() if isinstance(digest, str) and digest.strip() else None,
+            "rules_version": rules_version.strip()
+            if isinstance(rules_version, str) and rules_version.strip()
+            else None,
+            "advisory_digest": advisory_digest.strip()
+            if isinstance(advisory_digest, str) and advisory_digest.strip()
+            else None,
         }
     return out
 
@@ -87,6 +95,8 @@ def write_lock(path: Path, tools: dict[str, dict]) -> None:
                 for key, value in {
                     "commit": entry["commit"],
                     "digest": entry.get("digest"),
+                    "rules_version": entry.get("rules_version"),
+                    "advisory_digest": entry.get("advisory_digest"),
                     "git": entry.get("git"),
                     "ref": entry.get("ref"),
                     "path": entry.get("path"),

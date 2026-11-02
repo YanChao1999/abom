@@ -150,7 +150,7 @@ def test_install_and_check_reject_an_advisory(tmp_path: Path, monkeypatch) -> No
     report = json.loads(cmd_report("evil-skill"))
     assert report["schema"] == "abom.report/v1"
     assert report["ok"] is False
-    assert report["rules_version"] == "1.0.0"
+    assert report["rules_version"] == "1.1.0"
     assert report["advisories"][0]["id"] == "ABOM-2026-0007"
     assert cmd_advisories(None)[0].startswith("ABOM-2026-0007")
     assert "Known malicious fixture recipe." in cmd_advisory("ABOM-2026-0007")

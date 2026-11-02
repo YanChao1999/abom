@@ -10,29 +10,31 @@ from abom.advisory import (
     REPORT_SCHEMA,
     AdvisoryError,
     AdvisoryHit,
-    load_rules_version,
+    Rule,
+    load_rules,
     match_advisories,
 )
-from abom.recipe import Recipe, RecipeError, license_terms
+from abom.policy import Policy, policy_advisory_sources, policy_violations
+from abom.recipe import Recipe, RecipeError, license_terms, validate_git_url
+from abom.wire import WireError, mcp_server_entry
 
-# Commands that turn a clone or npm lifecycle script into a remote shell.
-_REMOTE_SHELL = re.compile(
-    r"(?:curl|wget)\b[^\n|]*\|\s*(?:ba)?sh\b"
-    r"|base64\s+(?:-d|--decode)\b[^\n|]*\|\s*(?:ba)?sh\b"
-    r"|\b(?:bash|sh)\s+-c\b"
-    r"|/dev/tcp/",
-    re.IGNORECASE,
-)
-# Instruction-override lines. The material is data for an agent, so these are treated as hostile.
-_PROMPT_INJECTION = re.compile(
-    r"ignore\s+(?:all\s+)?(?:previous|prior|above)\s+instructions"
-    r"|disregard\s+(?:all\s+)?(?:previous|prior|above)\s+instructions",
-    re.IGNORECASE,
-)
 _EXCERPT_BYTES = 6_000
 _EXCERPT_FILES = 3
 _LIFECYCLE_SCRIPTS = ("preinstall", "install", "postinstall", "prepare", "preprepare", "prepublish")
 _PROMPT_SUFFIXES = {".md", ".markdown", ".txt", ".prompt"}
+_SKILL_TEXT_SUFFIXES = _PROMPT_SUFFIXES | {
+    ".py",
+    ".js",
+    ".mjs",
+    ".cjs",
+    ".ts",
+    ".sh",
+    ".bash",
+    ".json",
+    ".yml",
+    ".yaml",
+    ".toml",
+}
 _TEXT_SCAN_BYTES = 256_000
 
 
@@ -50,35 +52,54 @@ def inspect_material(
     checkout: Path,
     *,
     commit: str | None = None,
+    policy: Policy | None = None,
 ) -> CheckReport:
     material = checkout if recipe.path is None else checkout / recipe.path
     findings: list[str] = []
     advisories: tuple[AdvisoryHit, ...] = ()
-    rules_version = _rules_version()
+    try:
+        rules_version, rules = load_rules()
+    except AdvisoryError as exc:
+        return CheckReport(False, (str(exc),), rules_version="unknown", commit=commit)
     if not material.exists() and not material.is_symlink():
         findings.append(f"{recipe.kind} path '{recipe.path or '.'}' is missing")
         return CheckReport(False, tuple(findings), rules_version=rules_version, commit=commit)
 
-    findings.extend(_symlink_findings(checkout, material))
-    findings.extend(_kind_findings(recipe.kind, material))
-    findings.extend(_license_findings(recipe.license, checkout, material))
-    try:
-        advisories = tuple(
-            match_advisories(
-                recipe_name=recipe.name,
-                git=recipe.git,
-                commit=commit,
-                ref=recipe.ref,
-            )
-        )
-    except AdvisoryError as exc:
-        findings.append(str(exc))
-    else:
-        for hit in advisories:
-            findings.append(
-                f"advisory {hit.advisory.id} ({hit.advisory.severity}): "
-                f"{hit.advisory.summary} [{hit.reason}]"
-            )
+    extra = policy_advisory_sources(policy)
+    for rule in rules:
+        if rule.check == "symlink-escape":
+            findings.extend(_symlink_findings(checkout, material))
+        elif rule.check == "kind-shape":
+            findings.extend(_kind_findings(recipe.kind, material))
+        elif rule.check == "license-file":
+            findings.extend(_license_findings(recipe.license, checkout, material))
+        elif rule.check == "unsafe-git":
+            try:
+                validate_git_url(recipe.git)
+            except RecipeError as exc:
+                findings.append(str(exc))
+        elif rule.check == "advisory":
+            try:
+                advisories = tuple(
+                    match_advisories(
+                        recipe_name=recipe.name,
+                        git=recipe.git,
+                        commit=commit,
+                        ref=recipe.ref,
+                        extra=extra or None,
+                    )
+                )
+            except AdvisoryError as exc:
+                findings.append(str(exc))
+            else:
+                for hit in advisories:
+                    findings.append(
+                        f"advisory {hit.advisory.id} ({hit.advisory.severity}): "
+                        f"{hit.advisory.summary} [{hit.reason}]"
+                    )
+        elif rule.pattern:
+            findings.extend(_pattern_findings(rule, recipe, material))
+    findings.extend(policy_violations(policy, kind=recipe.kind, license_id=recipe.license))
     return CheckReport(
         not findings,
         tuple(findings),
@@ -158,9 +179,117 @@ def report_to_dict(recipe: Recipe, report: CheckReport) -> dict:
 
 def _rules_version() -> str:
     try:
-        return load_rules_version()
+        version, _rules = load_rules()
     except AdvisoryError:
         return "unknown"
+    return version
+
+
+def _pattern_findings(rule: Rule, recipe: Recipe, material: Path) -> list[str]:
+    if not rule.pattern:
+        return []
+    flags = re.IGNORECASE if "i" in rule.flags.lower() else 0
+    regex = re.compile(rule.pattern, flags)
+    scans = set(rule.scan)
+    findings: list[str] = []
+    remote = rule.id == "ABOM-RULE-remote-shell"
+    if recipe.kind == "skill" and "skill-tree" in scans:
+        findings.extend(_tree_pattern_findings(material, regex, remote=remote))
+    if recipe.kind == "prompt" and "prompt-text" in scans:
+        findings.extend(_prompt_pattern_findings(material, regex, remote=remote))
+    if recipe.kind in {"package", "mcp"} and "lifecycle-scripts" in scans and remote:
+        findings.extend(_lifecycle_findings(material, regex))
+    if recipe.kind == "mcp" and "mcp-command" in scans and remote:
+        findings.extend(_mcp_command_findings(recipe.name, material, regex))
+    return findings
+
+
+def _tree_pattern_findings(material: Path, regex: re.Pattern[str], *, remote: bool) -> list[str]:
+    label = "a remote shell command" if remote else "a prompt-injection instruction"
+    findings: list[str] = []
+    for path in _skill_text_files(material):
+        text = _read_text(path)
+        if not text or not regex.search(text):
+            continue
+        if path.name == "SKILL.md":
+            findings.append(f"SKILL.md contains {label}")
+        else:
+            relative = path.name if material.is_file() else path.relative_to(material).as_posix()
+            findings.append(f"{relative} contains {label}")
+    return findings
+
+
+def _prompt_pattern_findings(material: Path, regex: re.Pattern[str], *, remote: bool) -> list[str]:
+    label = "a remote shell command" if remote else "a prompt-injection instruction"
+    findings: list[str] = []
+    for path in _prompt_files(material):
+        text = _read_text(path)
+        if text and regex.search(text):
+            findings.append(f"prompt file contains {label}: {path.name}")
+    return findings
+
+
+def _lifecycle_findings(material: Path, regex: re.Pattern[str]) -> list[str]:
+    if not material.is_dir():
+        return []
+    findings: list[str] = []
+    package_json = material / "package.json"
+    if package_json.is_file():
+        try:
+            data = json.loads(package_json.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            data = None
+        scripts = data.get("scripts", {}) if isinstance(data, dict) else None
+        if isinstance(scripts, dict):
+            for key in _LIFECYCLE_SCRIPTS:
+                command = scripts.get(key)
+                if isinstance(command, str) and command.strip() and regex.search(command):
+                    findings.append(
+                        f"package.json {key} script looks like a remote shell: {command}"
+                    )
+    pyproject = material / "pyproject.toml"
+    if pyproject.is_file():
+        text = _read_text(pyproject)
+        if text and regex.search(text):
+            findings.append("pyproject.toml contains a remote shell command")
+    return findings
+
+
+def _mcp_command_findings(name: str, material: Path, regex: re.Pattern[str]) -> list[str]:
+    try:
+        entry = mcp_server_entry(name, material)
+    except WireError:
+        return []
+    rendered = " ".join(
+        [str(entry.get("command") or ""), *[str(arg) for arg in entry.get("args") or []]]
+    ).strip()
+    if rendered and regex.search(rendered):
+        return [f"mcp command looks like a remote shell: {rendered}"]
+    return []
+
+
+def _skill_text_files(material: Path) -> list[Path]:
+    if material.is_file():
+        return [material] if _is_skill_text(material) else []
+    if not material.is_dir() or material.is_symlink():
+        return []
+    found: list[Path] = []
+    for dirpath, dirnames, filenames in os.walk(material, followlinks=False):
+        dirnames[:] = [
+            name
+            for name in dirnames
+            if name not in _SKIP_DIRS and not (Path(dirpath) / name).is_symlink()
+        ]
+        for name in filenames:
+            path = Path(dirpath) / name
+            if path.is_symlink() or not _is_skill_text(path):
+                continue
+            found.append(path)
+    return found
+
+
+def _is_skill_text(path: Path) -> bool:
+    return path.suffix.lower() in _SKILL_TEXT_SUFFIXES or path.name == "SKILL.md"
 
 
 def _kind_findings(kind: str, material: Path) -> list[str]:
@@ -185,14 +314,9 @@ def _skill_findings(material: Path) -> list[str]:
     if text is None:
         return ["SKILL.md is not a text file"]
     frontmatter = _frontmatter(text)
-    findings: list[str] = []
     if not frontmatter.get("name") or not frontmatter.get("description"):
-        findings.append("SKILL.md frontmatter must include name and description")
-    if _REMOTE_SHELL.search(text):
-        findings.append("SKILL.md contains a remote shell command")
-    if _PROMPT_INJECTION.search(text):
-        findings.append("SKILL.md contains a prompt-injection instruction")
-    return findings
+        return ["SKILL.md frontmatter must include name and description"]
+    return []
 
 
 def _prompt_findings(material: Path) -> list[str]:
@@ -207,10 +331,6 @@ def _prompt_findings(material: Path) -> list[str]:
             continue
         if not text.strip():
             findings.append(f"prompt file is empty: {path.name}")
-        elif _REMOTE_SHELL.search(text):
-            findings.append(f"prompt file contains a remote shell command: {path.name}")
-        elif _PROMPT_INJECTION.search(text):
-            findings.append(f"prompt file contains a prompt-injection instruction: {path.name}")
     return findings
 
 
@@ -265,12 +385,6 @@ def _package_json_findings(path: Path, *, required: bool) -> list[str]:
         scripts = {}
     if not isinstance(scripts, dict):
         return [*findings, "package.json scripts must be an object"]
-    for key in _LIFECYCLE_SCRIPTS:
-        command = scripts.get(key)
-        if not isinstance(command, str) or not command.strip():
-            continue
-        if _REMOTE_SHELL.search(command):
-            findings.append(f"package.json {key} script looks like a remote shell: {command}")
     return findings
 
 
@@ -345,7 +459,16 @@ def _read_text(path: Path) -> str | None:
 
 
 _LICENSE_NAME = re.compile(r"^(?:LICENSE|LICENCE|COPYING)(?:[.-].*)?$", re.IGNORECASE)
-_SKIP_DIRS = {".git", ".venv", "venv", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
+_SKIP_DIRS = {
+    ".git",
+    ".venv",
+    "venv",
+    "node_modules",
+    "__pycache__",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+}
 
 
 def _license_findings(declared: str, checkout: Path, material: Path) -> list[str]:

@@ -26,6 +26,8 @@ jobs:
         run: |
           abom sync
           abom lock --check
+      - name: Audit the lock without reinstalling
+        run: abom audit
       - name: Check and report locked tools
         env:
           ABOM_HOME: ${{ runner.temp }}/abom-home
