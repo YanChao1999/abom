@@ -90,6 +90,9 @@ def tool_wire(workspace: Path, name: str) -> dict:
         out["link_name"] = link_name.strip()
     if entry.get("global") is True:
         out["global"] = True
+    commit = entry.get("commit")
+    if isinstance(commit, str) and commit.strip():
+        out["commit"] = commit.strip()
     return out
 
 
@@ -121,6 +124,7 @@ def record_tool_wire(
     link_name: str | None = None,
     global_scope: bool = False,
     default_agent: str | None = None,
+    commit: str | None = None,
 ) -> None:
     data = load_project(workspace)
     tools = dict(data["tools"])
@@ -129,6 +133,8 @@ def record_tool_wire(
         entry["link_name"] = link_name
     if global_scope:
         entry["global"] = True
+    if commit:
+        entry["commit"] = commit
     tools[name] = entry
     write_project(
         workspace,

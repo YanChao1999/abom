@@ -7,7 +7,7 @@
 If you already install agent skills and MCP servers by hand, abom is for the next step: **treat them like a supply chain**.
 
 - **Check before keep** — kind, license, symlink escape, remote-shell hooks, and prompt-injection text are rejected at install time.
-- **Pin the workspace** — `abom add` wires the nearest project (uv-style) and writes `abom.lock.json` with commit + material digest.
+- **Pin the workspace** — `abom add` wires the nearest project (uv-style) and writes `abom.lock.json` with commit, material digest, rules version, and advisory feed digest. Each commit lives in its own store tree.
 - **Subscribe to advisories** — ids like `ABOM-2026-0001` work like CVE records for agent materials; feed at https://yanchao1999.github.io/abom/advisories.json.
 - **Private over public** — path, HTTPS, or git taps overlay the public `core` catalog without forking the trust root.
 
@@ -108,6 +108,7 @@ abom use modelcontextprotocol-filesystem
 abom show anthropics-skill-creator
 abom upgrade anthropics-skill-creator
 abom lock --check
+abom audit
 abom sync
 abom unuse anthropics-skill-creator
 abom rollback anthropics-skill-creator
@@ -118,11 +119,11 @@ abom catalogs
 
 `abom check` clones the recipe when it is not installed yet, then deletes that temporary checkout. Install runs the same check and keeps the checkout only when it passes. The check confirms the kind and blocks install-time hijacks:
 
-- a skill must be a directory with `SKILL.md` frontmatter (`name` and `description`)
+- a skill must be a directory with `SKILL.md` frontmatter (`name` and `description`); remote-shell and instruction-override patterns are applied to the whole skill tree from `rules.json`
 - a prompt must be a text prompt file, or a directory of them
 - a package must have `package.json` or `pyproject.toml`
 - the checkout must contain a license file, and the recognized license must satisfy the recipe's `license` field
-- an mcp must have a server manifest or entry file (`package.json`, `pyproject.toml`, `index.ts`, `index.js`, `server.py`, or `main.py`)
+- an mcp must have a server manifest or entry file (`package.json`, `pyproject.toml`, `index.ts`, `index.js`, `server.py`, or `main.py`). The command written into MCP config launches that checkout, and that command is scanned for remote-shell patterns
 - clone URLs cannot use a scheme that runs a helper, such as `ext::`
 - git hooks and filesystem monitors from the cloned repo are not executed
 - a symlink that points outside the checkout is rejected
@@ -152,13 +153,14 @@ Set `ABOM_ADVISORIES` to a path or `https://` URL to replace the feed, or `ABOM_
 - `abom install <name> --locked`: install the commit pinned in `abom.lock.json`.
 - `abom install <name> <git_url>`: clone a git repository that is not in the catalog.
 - `abom init [--agent …]`: create `<workspace>/.abom/project.json`.
-- `abom add <name>`: install if needed, wire the nearest workspace, and update that project's `abom.lock.json` (includes material digest).
+- `abom add <name>`: ensure the recipe ref tip (or `--locked` commit) is in the store, wire the nearest workspace to that tree, and update that project's `abom.lock.json` (commit, material digest, rules version, advisory feed digest). Checkouts live at `$ABOM_HOME/store/<name>/<commit>`, so two projects can pin different commits.
 - `abom use <name> [target_repo] [--agent cursor|claude|copilot|agents|codex|all] [--workspace …]`: wire into a project. With no target, discovers the nearest workspace from cwd (`.abom/`, `abom.lock.json`, `.cursor`, `.git`, …). Agent prefs are stored in `<workspace>/.abom/project.json` and reused on later `use` in that project. MCP `cwd` / filesystem args default to that workspace.
 - `abom unuse <name> [target]`: remove skill/prompt links and MCP entries for the tool from the workspace.
 - `abom upgrade [name]`: move installed catalog checkouts to the current recipe ref tip.
 - `abom rollback <name>`: restore the previous receipt commit.
-- `abom lock` / `abom lock --check`: write or verify `abom.lock.json` (commit + optional material digest).
-- `abom sync [--lock-file …]`: install or reinstall tools so they match `abom.lock.json`.
+- `abom lock` / `abom lock --check`: write or verify `abom.lock.json` (commit, material digest, rules version, advisory feed digest). `--check` looks at the stored tree for that commit.
+- `abom sync [--lock-file …]`: install any missing locked commit. Other commits already in the store are left in place.
+- `abom audit [--lock-file …]`: replay advisories and `.abom/policy.json` against the lock. Does not clone or reinstall.
 - `abom tap list` / `abom tap add <name> <source>` / `abom tap update [name]` / `abom tap remove <name>`: manage path, `https://…json`, or git catalog taps over the public `core` trust root.
 - `abom catalogs`: list named catalog sources (core, taps, private, extras) and the trust root.
 - `abom recipes [query]`: list recipes, optionally filtered by name, kind, or description.
@@ -170,5 +172,7 @@ Set `ABOM_ADVISORIES` to a path or `https://` URL to replace the feed, or `ABOM_
 - `abom search [query]`: list installed tools, optionally filtered by name.
 - `abom remove <name>`: remove an installed tool and its receipt.
 - `abom link <name> <target_repo> [--link-name <name>]`: create a symlink at `<target_repo>/.abom/<name>` pointing to the installed material. `target_repo` must already exist.
+
+Optional `.abom/policy.json` (`abom.policy/v1`) restricts `licenses`, `kinds`, and lists advisory sources that must load (`bundled`, an `https://` URL, or a path). Checks read patterns from the versioned `src/abom/rules.json` rather than from copies in the checker.
 
 Set `ABOM_HOME` to override `~/.abom`. The bundled catalog is the public `core` trust root. Register private overlays with `abom tap add`, drop JSON into `$ABOM_HOME/catalogs/*.json`, or set `ABOM_EXTRA_CATALOGS` to a path list (`os.pathsep` separated). Later sources override earlier names. `ABOM_CATALOG` still replaces the whole merge for tests. Receipts keep `previous_commit` and a short `history` list for rollbacks.

@@ -30,8 +30,12 @@ COMMANDS = [
     ("unuse <name>", "Remove project wiring (skills/prompts/mcp + project.json)"),
     ("upgrade [name]", "Move installed checkouts to the recipe ref tip"),
     ("rollback <name>", "Restore the previous receipt commit"),
-    ("lock [--check]", "Write or verify abom.lock.json (commit + material digest)"),
-    ("sync", "Install or reinstall tools to match the lock file"),
+    (
+        "lock [--check]",
+        "Write or verify abom.lock.json (commit, digest, rules version, advisory digest)",
+    ),
+    ("sync", "Install each locked commit into the store without removing other pins"),
+    ("audit", "Replay advisories and project policy against the lock without installing"),
     (
         "tap list|add|update|remove",
         "Private path/url/git catalog taps over the public core trust root",
@@ -221,6 +225,7 @@ abom unuse abom-skill</code></pre>
         <h2>Pin</h2>
         <p>Lock digests, sync, and overlay private taps.</p>
         <pre><code>abom lock --check
+abom audit
 abom sync
 abom tap add team https://example.com/team.json</code></pre>
       </section>

@@ -21,6 +21,7 @@ from abom import __version__
 from abom.cli import (
     AbomError,
     cmd_add,
+    cmd_audit,
     cmd_check,
     cmd_init,
     cmd_install_recipe,
@@ -203,7 +204,16 @@ _TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "sync_tools",
-        "description": "Install or reinstall tools so they match abom.lock.json.",
+        "description": "Install stored commits so they match abom.lock.json without removing other pins.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"lock_file": {"type": "string"}},
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "audit_lock",
+        "description": "Replay advisories and project policy against a lock file without installing.",
         "inputSchema": {
             "type": "object",
             "properties": {"lock_file": {"type": "string"}},
@@ -375,6 +385,10 @@ def _dispatch(name: str, arguments: dict[str, Any]) -> str:
         lock_file = arguments.get("lock_file")
         path = Path(lock_file).expanduser() if isinstance(lock_file, str) and lock_file else None
         return "\n".join(cmd_sync(path))
+    if name == "audit_lock":
+        lock_file = arguments.get("lock_file")
+        path = Path(lock_file).expanduser() if isinstance(lock_file, str) and lock_file else None
+        return cmd_audit(path)
     if name == "list_taps":
         return "\n".join(cmd_tap_list())
     if name == "add_tap":

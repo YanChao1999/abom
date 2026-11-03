@@ -74,9 +74,11 @@ def link_prompt(material: Path, destination: Path) -> str:
 
 def _link_path(material: Path, destination: Path, *, label: str) -> str:
     destination.parent.mkdir(parents=True, exist_ok=True)
-    if destination.exists() or destination.is_symlink():
-        if destination.is_symlink() and destination.resolve() == material.resolve():
+    if destination.is_symlink():
+        if destination.resolve() == material.resolve():
             return f"{label} already linked -> {destination}"
+        destination.unlink()
+    elif destination.exists():
         raise WireError(f"{label} link '{destination}' already exists")
     destination.symlink_to(
         os.path.relpath(material, destination.parent),
@@ -91,26 +93,27 @@ def mcp_server_entry(
     *,
     workspace: Path | None = None,
 ) -> dict:
-    """Build a Cursor/Claude mcpServers entry for an installed checkout."""
+    """Build a Cursor/Claude mcpServers entry that launches this checkout."""
     package_json = material / "package.json"
+    package_name = name
     if package_json.is_file():
         try:
             data = json.loads(package_json.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
             raise WireError(f"could not read package.json: {exc}") from exc
-        package_name = data.get("name") if isinstance(data, dict) else None
-        if isinstance(package_name, str) and package_name.strip():
-            entry: dict = {"command": "npx", "args": ["-y", package_name.strip()]}
-            return _with_workspace(entry, package_name.strip(), workspace)
-        index_js = material / "index.js"
-        if index_js.is_file():
-            entry = {"command": "node", "args": [str(index_js.resolve())]}
-            return _with_workspace(entry, name, workspace)
-        raise WireError(f"mcp '{name}' has package.json but no package name or index.js to launch")
+        if not isinstance(data, dict):
+            raise WireError("package.json must be an object")
+        raw_name = data.get("name")
+        if isinstance(raw_name, str) and raw_name.strip():
+            package_name = raw_name.strip()
+        launch = _node_script(material, data)
+        if launch is not None:
+            entry = {"command": "node", "args": [str(launch.resolve())]}
+            return _with_workspace(entry, package_name, workspace)
 
     for entry_name in ("server.py", "main.py"):
         script = material / entry_name
-        if script.is_file():
+        if script.is_file() and not script.is_symlink():
             entry = {"command": "python", "args": [str(script.resolve())]}
             if workspace is not None:
                 entry["cwd"] = str(workspace.resolve(strict=False))
@@ -120,7 +123,32 @@ def mcp_server_entry(
         raise WireError(
             f"mcp '{name}' looks like a Python package; install it and set the module command by hand"
         )
-    raise WireError(f"mcp '{name}' has no package.json, server.py, or main.py to launch")
+    raise WireError(f"mcp '{name}' has no file in the checkout to launch")
+
+
+def _node_script(material: Path, package: dict) -> Path | None:
+    """Pick a file inside the checkout. Never fall back to a registry fetch."""
+    relatives: list[str] = []
+    bin_field = package.get("bin")
+    if isinstance(bin_field, str):
+        relatives.append(bin_field)
+    elif isinstance(bin_field, dict):
+        relatives.extend(value for value in bin_field.values() if isinstance(value, str))
+    main = package.get("main")
+    if isinstance(main, str):
+        relatives.append(main)
+    relatives.extend(("index.js", "index.mjs", "index.cjs", "index.ts"))
+    for relative in relatives:
+        cleaned = relative.strip()
+        if not cleaned or cleaned.startswith(("/", "\\")):
+            continue
+        parts = Path(cleaned).parts
+        if ".." in parts:
+            continue
+        candidate = material / cleaned
+        if candidate.is_file() and not candidate.is_symlink():
+            return candidate
+    return None
 
 
 def _with_workspace(entry: dict, package_name: str, workspace: Path | None) -> dict:

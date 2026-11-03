@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -50,6 +51,20 @@ class AdvisoryHit:
     reason: str
 
 
+@dataclass(frozen=True)
+class Rule:
+    id: str
+    summary: str
+    check: str | None = None
+    pattern: str | None = None
+    flags: str = ""
+    scan: tuple[str, ...] = ()
+
+
+RULE_CHECKS = frozenset({"kind-shape", "license-file", "symlink-escape", "unsafe-git", "advisory"})
+RULE_SCANS = frozenset({"skill-tree", "prompt-text", "lifecycle-scripts", "mcp-command"})
+
+
 def bundled_advisories_path() -> Path:
     return Path(__file__).resolve().parent / "advisories.json"
 
@@ -84,6 +99,12 @@ def advisory_extra_sources() -> list[str | Path]:
 
 
 def load_rules_version(path: Path | None = None) -> str:
+    version, _rules = load_rules(path)
+    return version
+
+
+def load_rules(path: Path | None = None) -> tuple[str, tuple[Rule, ...]]:
+    """Load the versioned rule file. Patterns are executed from this file."""
     rules_file = path or bundled_rules_path()
     try:
         data = json.loads(rules_file.read_text(encoding="utf-8"))
@@ -94,7 +115,66 @@ def load_rules_version(path: Path | None = None) -> str:
     version = data.get("version")
     if not isinstance(version, str) or not version.strip():
         raise AdvisoryError(f"rules '{rules_file}' is missing version")
-    return version.strip()
+    entries = data.get("rules")
+    if not isinstance(entries, list) or not entries:
+        raise AdvisoryError(f"rules '{rules_file}' must contain a rules list")
+    found: list[Rule] = []
+    seen: set[str] = set()
+    for index, entry in enumerate(entries):
+        if not isinstance(entry, dict):
+            raise AdvisoryError(f"rule entry {index} must be an object")
+        rule = _rule_from_mapping(entry)
+        if rule.id in seen:
+            raise AdvisoryError(f"duplicate rule '{rule.id}'")
+        seen.add(rule.id)
+        found.append(rule)
+    return version.strip(), tuple(found)
+
+
+def _rule_from_mapping(data: dict) -> Rule:
+    rule_id = data.get("id")
+    summary = data.get("summary")
+    if not isinstance(rule_id, str) or not rule_id.strip():
+        raise AdvisoryError("rule is missing id")
+    if not isinstance(summary, str) or not summary.strip():
+        raise AdvisoryError(f"rule '{rule_id}' is missing summary")
+    check = data.get("check")
+    pattern = data.get("pattern")
+    if check is None and pattern is None:
+        raise AdvisoryError(f"rule '{rule_id}' needs check or pattern")
+    if check is not None and (not isinstance(check, str) or check not in RULE_CHECKS):
+        allowed = ", ".join(sorted(RULE_CHECKS))
+        raise AdvisoryError(f"rule '{rule_id}' check must be one of: {allowed}")
+    flags = data.get("flags") or ""
+    if not isinstance(flags, str):
+        raise AdvisoryError(f"rule '{rule_id}' flags must be a string")
+    scan_raw = data.get("scan") or []
+    if not isinstance(scan_raw, list) or any(not isinstance(item, str) for item in scan_raw):
+        raise AdvisoryError(f"rule '{rule_id}' scan must be a list of strings")
+    scan = tuple(item.strip() for item in scan_raw if item.strip())
+    unknown = [item for item in scan if item not in RULE_SCANS]
+    if unknown:
+        allowed = ", ".join(sorted(RULE_SCANS))
+        raise AdvisoryError(f"rule '{rule_id}' scan '{unknown[0]}' must be one of: {allowed}")
+    if isinstance(pattern, str):
+        if not pattern.strip():
+            raise AdvisoryError(f"rule '{rule_id}' pattern is empty")
+        if not scan:
+            raise AdvisoryError(f"rule '{rule_id}' pattern needs a scan list")
+        try:
+            re.compile(pattern, re.IGNORECASE if "i" in flags.lower() else 0)
+        except re.error as exc:
+            raise AdvisoryError(f"rule '{rule_id}' pattern is invalid: {exc}") from exc
+    elif pattern is not None:
+        raise AdvisoryError(f"rule '{rule_id}' pattern must be a string")
+    return Rule(
+        id=rule_id.strip(),
+        summary=summary.strip(),
+        check=check if isinstance(check, str) else None,
+        pattern=pattern if isinstance(pattern, str) else None,
+        flags=flags,
+        scan=scan,
+    )
 
 
 def read_advisories_text(source: str | Path) -> tuple[str, str]:
@@ -114,18 +194,36 @@ def read_advisories_text(source: str | Path) -> tuple[str, str]:
         raise AdvisoryError(f"could not read advisories '{path}': {exc}") from exc
 
 
-def load_advisories(path: Path | str | None = None) -> list[Advisory]:
+def advisory_sources() -> list[str | Path]:
+    """Default feed order. ABOM_ADVISORIES replaces the bundled file; extras overlay it."""
+    if os.environ.get("ABOM_ADVISORIES"):
+        sources: list[str | Path] = [advisories_path()]
+    else:
+        sources = [bundled_advisories_path()]
+    sources.extend(advisory_extra_sources())
+    return sources
+
+
+def advisory_feed_digest(extra: list[str | Path] | None = None) -> str:
+    """Content hash of the advisory feed texts, ignoring install paths."""
+    digest = hashlib.sha256()
+    for source in [*advisory_sources(), *(extra or [])]:
+        text, _label = read_advisories_text(source)
+        digest.update(text.encode("utf-8"))
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def load_advisories(
+    path: Path | str | None = None,
+    *,
+    extra: list[str | Path] | None = None,
+) -> list[Advisory]:
     """Load advisories. Later sources override earlier ids (extras win over primary)."""
     if path is not None:
-        text, label = read_advisories_text(path)
-        return parse_advisories(text, label)
-
-    sources: list[str | Path] = [advisories_path()]
-    # When ABOM_ADVISORIES replaces the whole feed, still allow extras as overlays.
-    if not os.environ.get("ABOM_ADVISORIES"):
-        sources = [bundled_advisories_path(), *advisory_extra_sources()]
+        sources: list[str | Path] = [path, *(extra or [])]
     else:
-        sources.extend(advisory_extra_sources())
+        sources = [*advisory_sources(), *(extra or [])]
 
     merged: dict[str, Advisory] = {}
     for source in sources:
@@ -196,9 +294,10 @@ def match_advisories(
     commit: str | None = None,
     ref: str | None = None,
     path: Path | None = None,
+    extra: list[str | Path] | None = None,
 ) -> list[AdvisoryHit]:
     hits: list[AdvisoryHit] = []
-    for advisory in load_advisories(path):
+    for advisory in load_advisories(path, extra=extra):
         if advisory.withdrawn:
             continue
         for item in advisory.affected:
