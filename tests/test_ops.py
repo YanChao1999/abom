@@ -10,6 +10,7 @@ from abom.cli import (
     AbomError,
     checkout_path,
     cmd_catalogs,
+    cmd_init,
     cmd_install_recipe,
     cmd_lock,
     cmd_lock_check,
@@ -101,6 +102,30 @@ def test_use_links_a_skill_into_cursor_paths(tmp_path: Path, monkeypatch) -> Non
     assert "linked skill" in message
     assert link.is_symlink()
     assert (link / "SKILL.md").is_file()
+
+
+def test_init_agents_are_used_when_use_omits_agent(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("ABOM_HOME", str(tmp_path / "home"))
+    source = _create_repo(
+        tmp_path / "skill",
+        {"skills/demo/SKILL.md": "---\nname: demo\ndescription: Demo skill.\n---\n\n# Demo\n"},
+    )
+    catalog = tmp_path / "recipes.json"
+    _write_catalog(catalog, [_skill_entry("local-skill", str(source))])
+    monkeypatch.setenv("ABOM_CATALOG", str(catalog))
+    project = tmp_path / "project"
+    project.mkdir()
+    monkeypatch.chdir(project)
+
+    assert "cursor, claude" in cmd_init(agents=["cursor", "claude"])
+    cmd_install_recipe("local-skill")
+    message = cmd_use("local-skill")
+    assert (project / ".cursor" / "skills" / "local-skill").is_symlink()
+    assert (project / ".claude" / "skills" / "local-skill").is_symlink()
+    assert "linked skill" in message
+    saved = json.loads((project / ".abom" / "project.json").read_text(encoding="utf-8"))
+    assert saved["agent"] == ["cursor", "claude"]
+    assert saved["tools"]["local-skill"]["agent"] == ["cursor", "claude"]
 
 
 def test_use_writes_mcp_json(tmp_path: Path, monkeypatch) -> None:

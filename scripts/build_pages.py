@@ -25,7 +25,10 @@ COMMANDS = [
         "add <name>",
         "Install if needed, wire the nearest workspace, and update abom.lock.json",
     ),
-    ("init [--agent]", "Create .abom/project.json in the nearest workspace"),
+    (
+        "init [--agent name]...",
+        "Create .abom/project.json. Repeat --agent for more than one default",
+    ),
     ("use <name> [target]", "Wire into the nearest workspace from cwd (uv-style)"),
     ("unuse <name>", "Remove project wiring (skills/prompts/mcp + project.json)"),
     ("update", "Refresh the remote recipe catalog and private taps"),

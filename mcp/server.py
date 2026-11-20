@@ -131,8 +131,20 @@ _TOOLS: list[dict[str, Any]] = [
             "type": "object",
             "properties": {
                 "agent": {
-                    "type": "string",
-                    "enum": ["cursor", "claude", "copilot", "agents", "codex", "all"],
+                    "anyOf": [
+                        {
+                            "type": "string",
+                            "enum": ["cursor", "claude", "copilot", "agents", "codex", "all"],
+                        },
+                        {
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "enum": ["cursor", "claude", "copilot", "agents", "codex", "all"],
+                            },
+                            "minItems": 1,
+                        },
+                    ]
                 }
             },
             "additionalProperties": False,
@@ -355,7 +367,11 @@ def _dispatch(name: str, arguments: dict[str, Any]) -> str:
         )
     if name == "init_project":
         agent = arguments.get("agent")
-        return cmd_init(agent=agent if isinstance(agent, str) else "cursor")
+        if isinstance(agent, str):
+            return cmd_init(agents=[agent])
+        if isinstance(agent, list) and agent and all(isinstance(item, str) for item in agent):
+            return cmd_init(agents=agent)
+        return cmd_init()
     if name == "add_recipe":
         agent = arguments.get("agent")
         return "\n".join(

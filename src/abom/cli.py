@@ -40,6 +40,7 @@ from abom.project import (
     find_workspace,
     init_project,
     load_project,
+    parse_agents,
     record_tool_wire,
     remove_tool_wire,
     tool_wire,
@@ -474,7 +475,10 @@ def cmd_show(name: str) -> str:
         if local or (workspace / ".abom" / "project.json").is_file():
             lines.append(f"workspace: {workspace}")
             if local.get("agent"):
-                lines.append(f"wire.agent: {local['agent']}")
+                shown = local["agent"]
+                if isinstance(shown, list):
+                    shown = ", ".join(shown)
+                lines.append(f"wire.agent: {shown}")
     except (ProjectError, AbomError):
         pass
     commit = receipt.get("commit") if receipt else None
@@ -593,12 +597,17 @@ def cmd_use(
 
     try:
         local = tool_wire(target_root, name)
+        if agent:
+            resolved_agents = parse_agents(agent, label=name)
+        elif local.get("agent") is not None:
+            resolved_agents = parse_agents(local["agent"], label=name)
+        else:
+            project_agents = parse_agents(
+                load_project(target_root).get("agent"), label=str(target_root)
+            )
+            resolved_agents = project_agents or ["cursor"]
     except ProjectError as exc:
         raise AbomError(str(exc)) from exc
-
-    resolved_agent = agent or local.get("agent") or "cursor"
-    if not isinstance(resolved_agent, str) or not resolved_agent.strip():
-        resolved_agent = "cursor"
     if link_name is None and isinstance(local.get("link_name"), str):
         link_name = local["link_name"]
     if not global_scope and local.get("global") is True:
@@ -612,20 +621,20 @@ def cmd_use(
 
     try:
         if kind == "skill":
-            for directory in skill_dirs(resolved_agent, target_root):
+            for directory in _dirs_for_agents(resolved_agents, target_root, skill_dirs):
                 messages.append(link_skill(material, directory / final_name))
         elif kind == "prompt":
-            for directory in prompt_dirs(resolved_agent, target_root):
+            for directory in _dirs_for_agents(resolved_agents, target_root, prompt_dirs):
                 dest = directory / final_name
                 if material.is_file():
                     dest = directory / material.name
                 messages.append(link_prompt(material, dest))
         elif kind == "mcp":
-            agents = ("cursor", "claude") if resolved_agent == "all" else (resolved_agent,)
             entry = mcp_server_entry(name, material, workspace=workspace_root)
-            for item in agents:
-                if item not in {"cursor", "claude"}:
-                    raise AbomError(f"mcp use supports cursor or claude, not '{item}'")
+            mcp_agents = _mcp_agents(resolved_agents)
+            if not mcp_agents:
+                raise AbomError("mcp use supports cursor or claude")
+            for item in mcp_agents:
                 path = mcp_config_path(item, target_root, global_scope=global_scope)
                 messages.append(merge_mcp_server(path, final_name, entry))
         elif kind == "package":
@@ -640,7 +649,7 @@ def cmd_use(
         record_tool_wire(
             target_root,
             name,
-            agent=resolved_agent,
+            agent=resolved_agents,
             link_name=final_name if final_name != name else None,
             global_scope=global_scope,
             commit=wired_commit,
@@ -755,9 +764,35 @@ def cmd_lock_check(path: Path | None = None) -> str:
     return f"lock check passed ({len(tools)} tools)"
 
 
-def cmd_init(agent: str = "cursor") -> str:
+def _dirs_for_agents(
+    agents: list[str],
+    project: Path,
+    lookup,
+) -> list[Path]:
+    found: list[Path] = []
+    seen: set[Path] = set()
+    for item in agents:
+        for directory in lookup(item, project):
+            if directory in seen:
+                continue
+            seen.add(directory)
+            found.append(directory)
+    return found
+
+
+def _mcp_agents(agents: list[str]) -> list[str]:
+    found: list[str] = []
+    for item in agents:
+        names = ("cursor", "claude") if item == "all" else (item,)
+        for name in names:
+            if name in {"cursor", "claude"} and name not in found:
+                found.append(name)
+    return found
+
+
+def cmd_init(agents: list[str] | None = None) -> str:
     try:
-        return init_project(agent=agent)
+        return init_project(agents=agents)
     except ProjectError as exc:
         raise AbomError(str(exc)) from exc
 
@@ -808,7 +843,10 @@ def cmd_unuse(name: str, target_repo: str | None = None) -> str:
         raise AbomError(f"workspace '{workspace}' must be an existing directory")
 
     local = tool_wire(workspace, name)
-    agent = local.get("agent") or load_project(workspace).get("agent") or "cursor"
+    raw_agent = local.get("agent")
+    if raw_agent is None:
+        raw_agent = load_project(workspace).get("agent") or "cursor"
+    agents = parse_agents(raw_agent, label=name) or ["cursor"]
     link_name = local.get("link_name") or name
     global_scope = bool(local.get("global"))
     messages: list[str] = []
@@ -823,10 +861,10 @@ def cmd_unuse(name: str, target_repo: str | None = None) -> str:
 
     try:
         if kind == "skill":
-            for directory in skill_dirs(str(agent), workspace):
+            for directory in _dirs_for_agents(agents, workspace, skill_dirs):
                 messages.append(unlink_path(directory / link_name, label="skill"))
         elif kind == "prompt":
-            for directory in prompt_dirs(str(agent), workspace):
+            for directory in _dirs_for_agents(agents, workspace, prompt_dirs):
                 dest = directory / link_name
                 material_name = None
                 checkout = tools_dir() / name
@@ -838,10 +876,7 @@ def cmd_unuse(name: str, target_repo: str | None = None) -> str:
                     messages.append(unlink_path(directory / material_name, label="prompt"))
                 messages.append(unlink_path(dest, label="prompt"))
         elif kind == "mcp":
-            agents = ("cursor", "claude") if agent == "all" else (str(agent),)
-            for item in agents:
-                if item not in {"cursor", "claude"}:
-                    continue
+            for item in _mcp_agents(agents):
                 path = mcp_config_path(item, workspace, global_scope=global_scope)
                 messages.append(remove_mcp_server(path, link_name))
         elif kind == "package":
@@ -1129,9 +1164,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     init_parser.add_argument(
         "--agent",
-        default="cursor",
+        action="append",
         choices=("cursor", "claude", "copilot", "agents", "codex", "all"),
-        help="Default agent for this project",
+        help="Default agent. Repeat to initialize more than one",
     )
 
     add_parser = sub.add_parser(
@@ -1284,7 +1319,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "remove":
             print(cmd_remove(args.name))
         elif args.command == "init":
-            print(cmd_init(agent=args.agent))
+            print(cmd_init(agents=args.agent))
         elif args.command == "add":
             for line in cmd_add(
                 args.name,

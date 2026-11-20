@@ -18,7 +18,7 @@ abom recipes [query]
 abom info <name>
 abom show <name>
 abom check <name>
-abom init
+abom init [--agent cursor] [--agent claude]
 abom add <name>
 abom install <name> [--use --agent cursor]
 abom use <name>
@@ -38,7 +38,7 @@ abom link <name> <target_repo> [--link-name <name>]
 abom remove <name>
 ```
 
-`abom add` stores the recipe ref tip at `$ABOM_HOME/store/<name>/<commit>`, wires the nearest workspace to that tree, and updates `abom.lock.json` (commit, digest, rules version, advisory digest). Two projects can pin different commits; `abom sync` does not remove the other tree. MCP config launches the locked checkout. `abom audit` replays advisories against the lock without reinstalling. Optional `.abom/policy.json` sets allowed licenses, kinds, and required advisory sources. `abom unuse` removes project wiring. Taps accept local JSON, https catalog URLs, or git repos. Advisory feed: `https://yanchao1999.github.io/abom/advisories.json` (`ABOM_ADVISORIES` / `ABOM_ADVISORIES_EXTRA`). `ABOM_HOME` overrides `~/.abom`.
+`abom init --agent cursor --agent claude` records both as the project default. `abom use` and `abom add` wire every recorded agent when `--agent` is omitted. `abom add` stores the recipe ref tip at `$ABOM_HOME/store/<name>/<commit>`, wires the nearest workspace to that tree, and updates `abom.lock.json` (commit, digest, rules version, advisory digest). Two projects can pin different commits; `abom sync` does not remove the other tree. MCP config launches the locked checkout. `abom audit` replays advisories against the lock without reinstalling. Optional `.abom/policy.json` sets allowed licenses, kinds, and required advisory sources. `abom unuse` removes project wiring. Taps accept local JSON, https catalog URLs, or git repos. Advisory feed: `https://yanchao1999.github.io/abom/advisories.json` (`ABOM_ADVISORIES` / `ABOM_ADVISORIES_EXTRA`). `ABOM_HOME` overrides `~/.abom`.
 
 ## Add a recipe
 

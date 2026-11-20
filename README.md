@@ -103,7 +103,7 @@ abom recipes
 abom info anthropics-skill-creator
 abom check anthropics-skill-creator
 cd /path/to/project
-abom init
+abom init --agent cursor --agent claude
 abom add anthropics-skill-creator
 abom use modelcontextprotocol-filesystem
 abom show anthropics-skill-creator
@@ -154,7 +154,7 @@ Set `ABOM_ADVISORIES` to a path or `https://` URL to replace the feed, or `ABOM_
 - `abom install <name> --use [target] [--agent …] [--workspace …]`: install, then wire. Bare `--use` targets the nearest workspace from cwd (uv-style).
 - `abom install <name> --locked`: install the commit pinned in `abom.lock.json`.
 - `abom install <name> <git_url>`: clone a git repository that is not in the catalog.
-- `abom init [--agent …]`: create `<workspace>/.abom/project.json`.
+- `abom init [--agent name]`: create `<workspace>/.abom/project.json`. Repeat `--agent` to set more than one default. Later `abom use` and `abom add` wire every default agent when `--agent` is omitted.
 - `abom add <name>`: ensure the recipe ref tip (or `--locked` commit) is in the store, wire the nearest workspace to that tree, and update that project's `abom.lock.json` (commit, material digest, rules version, advisory feed digest). Checkouts live at `$ABOM_HOME/store/<name>/<commit>`, so two projects can pin different commits.
 - `abom use <name> [target_repo] [--agent cursor|claude|copilot|agents|codex|all] [--workspace …]`: wire into a project. With no target, discovers the nearest workspace from cwd (`.abom/`, `abom.lock.json`, `.cursor`, `.git`, …). Agent prefs are stored in `<workspace>/.abom/project.json` and reused on later `use` in that project. MCP `cwd` / filesystem args default to that workspace.
 - `abom unuse <name> [target]`: remove skill/prompt links and MCP entries for the tool from the workspace.
