@@ -1,6 +1,6 @@
 # abom
 
-`abom` is a Python CLI for managing agent materials (skills, prompts, MCP configs) as git-backed tools. The recipe list lives in the repo as `src/abom/recipes.json`. `abom install <name>` looks up that name and clones the git URL stored there.
+`abom` is a Python CLI for managing agent materials (skills, prompts, MCP configs) as git-backed tools. The recipe list is published at <https://yanchao1999.github.io/abom/recipes.json> from `src/abom/recipes.json`. An installed client refreshes that list on its own; `abom install <name>` looks up the name and clones the git URL stored there.
 
 ## Why use abom
 
@@ -44,7 +44,7 @@ Trusted publishing uses the GitHub environments `testpypi` and `pypi`. On each i
 
 ## Recipes
 
-Add a material by appending an object to the `recipes` list in `src/abom/recipes.json`. Name it `<publisher>-<material>` so the source is visible in the name, then install by that name:
+Add a material by appending an object to the `recipes` list in `src/abom/recipes.json`. Name it `<publisher>-<material>` so the source is visible in the name, then install by that name. Pushing `main` publishes the catalog on GitHub Pages. Clients refresh <https://yanchao1999.github.io/abom/recipes.json> (cached for one hour). `abom update` fetches it immediately. `ABOM_CATALOG_TTL=0` refreshes on every command. The document schema must stay `abom.catalog/v1`. Entries this client can parse replace the copy shipped in the package. An entry it cannot parse keeps the packaged recipe of the same name. A schema it does not know, or a failed download, keeps the last compatible cache, then the packaged catalog. Set `ABOM_CATALOG_URL` to another https catalog, or leave it empty to stay on the packaged copy.
 
 ```bash
 abom install anthropics-skill-creator
@@ -74,6 +74,7 @@ The catalog includes these recipes:
 | `abom-package` | package | [YanChao1999/abom](https://github.com/YanChao1999/abom) repository root |
 | `abom-skill` | skill | [YanChao1999/abom](https://github.com/YanChao1999/abom) `skills/abom` |
 | `abom-mcp` | mcp | [YanChao1999/abom](https://github.com/YanChao1999/abom) `mcp` |
+| `yanchao-mulation` | skill | [YanChao1999/mulation-bot](https://github.com/YanChao1999/mulation-bot) `skills/mulation` |
 | `anthropics-skill-creator` | skill | [anthropics/skills](https://github.com/anthropics/skills) `skills/skill-creator` |
 | `anthropics-frontend-design` | skill | [anthropics/skills](https://github.com/anthropics/skills) `skills/frontend-design` |
 | `anthropics-mcp-builder` | skill | [anthropics/skills](https://github.com/anthropics/skills) `skills/mcp-builder` |
@@ -106,6 +107,7 @@ abom init
 abom add anthropics-skill-creator
 abom use modelcontextprotocol-filesystem
 abom show anthropics-skill-creator
+abom update
 abom upgrade anthropics-skill-creator
 abom lock --check
 abom audit
@@ -156,6 +158,7 @@ Set `ABOM_ADVISORIES` to a path or `https://` URL to replace the feed, or `ABOM_
 - `abom add <name>`: ensure the recipe ref tip (or `--locked` commit) is in the store, wire the nearest workspace to that tree, and update that project's `abom.lock.json` (commit, material digest, rules version, advisory feed digest). Checkouts live at `$ABOM_HOME/store/<name>/<commit>`, so two projects can pin different commits.
 - `abom use <name> [target_repo] [--agent cursor|claude|copilot|agents|codex|all] [--workspace …]`: wire into a project. With no target, discovers the nearest workspace from cwd (`.abom/`, `abom.lock.json`, `.cursor`, `.git`, …). Agent prefs are stored in `<workspace>/.abom/project.json` and reused on later `use` in that project. MCP `cwd` / filesystem args default to that workspace.
 - `abom unuse <name> [target]`: remove skill/prompt links and MCP entries for the tool from the workspace.
+- `abom update`: refresh the remote recipe catalog and private taps. Installed checkouts stay where they are.
 - `abom upgrade [name]`: move installed catalog checkouts to the current recipe ref tip.
 - `abom rollback <name>`: restore the previous receipt commit.
 - `abom lock` / `abom lock --check`: write or verify `abom.lock.json` (commit, material digest, rules version, advisory feed digest). `--check` looks at the stored tree for that commit.
@@ -175,4 +178,4 @@ Set `ABOM_ADVISORIES` to a path or `https://` URL to replace the feed, or `ABOM_
 
 Optional `.abom/policy.json` (`abom.policy/v1`) restricts `licenses`, `kinds`, and lists advisory sources that must load (`bundled`, an `https://` URL, or a path). Checks read patterns from the versioned `src/abom/rules.json` rather than from copies in the checker.
 
-Set `ABOM_HOME` to override `~/.abom`. The bundled catalog is the public `core` trust root. Register private overlays with `abom tap add`, drop JSON into `$ABOM_HOME/catalogs/*.json`, or set `ABOM_EXTRA_CATALOGS` to a path list (`os.pathsep` separated). Later sources override earlier names. `ABOM_CATALOG` still replaces the whole merge for tests. Receipts keep `previous_commit` and a short `history` list for rollbacks.
+Set `ABOM_HOME` to override `~/.abom`. The public `core` trust root is the remote catalog when this client understands it, and the packaged catalog otherwise. Register private overlays with `abom tap add`, drop JSON into `$ABOM_HOME/catalogs/*.json`, or set `ABOM_EXTRA_CATALOGS` to a path list (`os.pathsep` separated). Later sources override earlier names. `ABOM_CATALOG` still replaces the whole merge for tests. Receipts keep `previous_commit` and a short `history` list for rollbacks.

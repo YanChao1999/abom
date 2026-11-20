@@ -1,11 +1,11 @@
 ---
 name: abom
-description: Install, check, use, sync, upgrade, lock, roll back, and tap private catalogs for agent skills, prompts, MCP servers, and packages with the abom CLI. Use when the user wants to add an agent material, wire it into Cursor/Claude/Copilot/Codex paths, pin commits, or overlay a private catalog on the public core trust root.
+description: Install, check, use, sync, update, upgrade, lock, roll back, and tap private catalogs for agent skills, prompts, MCP servers, and packages with the abom CLI. Use when the user wants to add an agent material, refresh the recipe catalog, wire it into Cursor/Claude/Copilot/Codex paths, pin commits, or overlay a private catalog on the public core trust root.
 ---
 
 # abom
 
-abom is the agent bill of materials manager. Recipes live in `src/abom/recipes.json`. Install by recipe name. The git URL stays in the catalog.
+abom is the agent bill of materials manager. Recipes are published from `src/abom/recipes.json` to `https://yanchao1999.github.io/abom/recipes.json`. Installed clients refresh that catalog when the schema is `abom.catalog/v1` and the entry parses; a failed refresh or an entry this client cannot parse keeps the packaged recipe. Install by recipe name. The git URL stays in the catalog.
 
 ## When to use
 
@@ -23,6 +23,7 @@ abom add <name>
 abom install <name> [--use --agent cursor]
 abom use <name>
 abom unuse <name>
+abom update
 abom upgrade [name]
 abom lock [--check]
 abom audit
@@ -69,4 +70,4 @@ Install this package from GitHub with `pip install git+https://github.com/YanCha
 ## This repo
 
 - `abom-skill` is this skill (`skills/abom`).
-- `abom-mcp` is the stdio MCP server (`mcp/server.py`). Launch it with `python mcp/server.py`. It exposes list, show, check, install, use, upgrade, sync, tap, rollback, search, link, and remove.
+- `abom-mcp` is the stdio MCP server (`mcp/server.py`). Launch it with `python mcp/server.py`. It exposes list, show, check, install, use, update, upgrade, sync, tap, rollback, search, link, and remove.

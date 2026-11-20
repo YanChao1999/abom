@@ -3,10 +3,16 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
+import urllib.error
+import urllib.request
 from dataclasses import dataclass, replace
 from pathlib import Path, PurePosixPath
 
 SCHEMA = "abom.catalog/v1"
+DEFAULT_CATALOG_URL = "https://yanchao1999.github.io/abom/recipes.json"
+_CATALOG_TIMEOUT = 5
+_DEFAULT_CATALOG_TTL = 3600.0
 KINDS = ("skill", "prompt", "mcp", "package")
 NAME_RE = re.compile(r"^[a-z0-9]+(?:[._-][a-z0-9]+)*$")
 ALLOWED_LICENSES = frozenset(
@@ -46,10 +52,29 @@ def bundled_catalog_path() -> Path:
     return Path(__file__).resolve().parent / "recipes.json"
 
 
-def private_catalogs_dir() -> Path:
+def _abom_home() -> Path:
     root = os.environ.get("ABOM_HOME")
-    home = Path(root).expanduser() if root else Path.home() / ".abom"
-    return home / "catalogs"
+    return Path(root).expanduser() if root else Path.home() / ".abom"
+
+
+def private_catalogs_dir() -> Path:
+    return _abom_home() / "catalogs"
+
+
+def catalog_url() -> str | None:
+    """HTTPS catalog to refresh, or None when remote refresh is off.
+
+    Unset ``ABOM_CATALOG_URL`` uses the public Pages catalog. An empty value
+    keeps the packaged copy.
+    """
+    if "ABOM_CATALOG_URL" in os.environ:
+        raw = os.environ["ABOM_CATALOG_URL"].strip()
+        if not raw:
+            return None
+        if not raw.lower().startswith("https://"):
+            raise RecipeError("ABOM_CATALOG_URL must be an https URL")
+        return raw
+    return DEFAULT_CATALOG_URL
 
 
 def catalog_path() -> Path:
@@ -57,7 +82,15 @@ def catalog_path() -> Path:
     override = os.environ.get("ABOM_CATALOG")
     if override:
         return Path(override).expanduser()
-    return bundled_catalog_path()
+    return core_catalog_file()
+
+
+def core_catalog_file() -> Path:
+    """Packaged catalog, or the cached remote catalog when that document is usable."""
+    url = catalog_url()
+    if url is None:
+        return bundled_catalog_path()
+    return _resolve_remote_core(url)
 
 
 def catalog_sources() -> list[tuple[str, Path]]:
@@ -66,7 +99,7 @@ def catalog_sources() -> list[tuple[str, Path]]:
     if override:
         return [("override", Path(override).expanduser())]
 
-    sources: list[tuple[str, Path]] = [("core", bundled_catalog_path())]
+    sources: list[tuple[str, Path]] = [("core", core_catalog_file())]
     try:
         from abom.taps import TapError, registered_tap_sources
 
@@ -107,6 +140,148 @@ def _load_one_catalog(catalog_file: Path) -> dict[str, Recipe]:
         raise RecipeError(f"could not read recipe catalog '{catalog_file}': {exc}") from exc
     recipes, _entries = parse_catalog(text, str(catalog_file))
     return recipes
+
+
+def compatible_catalog_text(remote_text: str, bundled_text: str) -> str | None:
+    """Return a v1 catalog using remote entries this client can parse.
+
+    A document with another schema is refused. An entry this client cannot
+    parse keeps the packaged recipe of the same name when that name exists.
+    """
+    try:
+        remote = json.loads(remote_text)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(remote, dict) or remote.get("schema") != SCHEMA:
+        return None
+    recipes = remote.get("recipes")
+    if not isinstance(recipes, list):
+        return None
+    _bundled, bundled_raw = parse_catalog(bundled_text, "bundled")
+    selected: dict[str, dict] = {}
+    order: list[str] = []
+    for entry in recipes:
+        if not isinstance(entry, dict):
+            continue
+        try:
+            recipe = recipe_from_mapping(entry)
+        except RecipeError:
+            name = entry.get("name")
+            if not isinstance(name, str) or name in selected:
+                continue
+            fallback = bundled_raw.get(name)
+            if fallback is None:
+                continue
+            selected[name] = fallback
+            order.append(name)
+            continue
+        if recipe.name not in order:
+            order.append(recipe.name)
+        selected[recipe.name] = entry
+    document = {"schema": SCHEMA, "recipes": [selected[name] for name in order]}
+    return json.dumps(document, indent=2) + "\n"
+
+
+def _catalog_ttl() -> float:
+    raw = os.environ.get("ABOM_CATALOG_TTL", str(int(_DEFAULT_CATALOG_TTL)))
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        return _DEFAULT_CATALOG_TTL
+
+
+def _cache_paths() -> tuple[Path, Path]:
+    cache = _abom_home() / "catalog-cache" / "core.json"
+    return cache, cache.with_suffix(".url")
+
+
+def _cache_is_catalog(path: Path) -> bool:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeError):
+        return False
+    return (
+        isinstance(data, dict)
+        and data.get("schema") == SCHEMA
+        and isinstance(data.get("recipes"), list)
+    )
+
+
+def _cache_is_fresh(cache: Path, marker: Path, url: str) -> bool:
+    ttl = _catalog_ttl()
+    if ttl == 0:
+        return False
+    try:
+        recorded = marker.read_text(encoding="utf-8").strip()
+        age = time.time() - cache.stat().st_mtime
+    except OSError:
+        return False
+    return recorded == url and age >= 0 and age < ttl and _cache_is_catalog(cache)
+
+
+def _write_cache(cache: Path, marker: Path, url: str, text: str) -> None:
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    temporary = cache.with_suffix(".json.tmp")
+    temporary.write_text(text, encoding="utf-8")
+    temporary.replace(cache)
+    marker.write_text(url + "\n", encoding="utf-8")
+
+
+def _fetch_catalog_text(url: str) -> str:
+    request = urllib.request.Request(url, headers={"User-Agent": "abom-catalog/1"})
+    try:
+        with urllib.request.urlopen(request, timeout=_CATALOG_TIMEOUT) as response:
+            return response.read().decode("utf-8")
+    except (urllib.error.URLError, TimeoutError, OSError, UnicodeError) as exc:
+        raise RecipeError(f"could not fetch recipe catalog '{url}': {exc}") from exc
+
+
+def refresh_core_catalog() -> str:
+    """Fetch the remote core catalog immediately, ignoring the cache TTL."""
+    url = catalog_url()
+    if url is None:
+        text = bundled_catalog_path().read_text(encoding="utf-8")
+        count = len(parse_catalog(text, "bundled")[0])
+        return f"core  packaged  {count} recipes"
+    cache, marker = _cache_paths()
+    remote_text = _fetch_catalog_text(url)
+    bundled_text = bundled_catalog_path().read_text(encoding="utf-8")
+    resolved = compatible_catalog_text(remote_text, bundled_text)
+    if resolved is None:
+        raise RecipeError(f"recipe catalog '{url}' is not an {SCHEMA} document this client can use")
+    _write_cache(cache, marker, url, resolved)
+    count = len(json.loads(resolved)["recipes"])
+    return f"updated core  {url}  {count} recipes"
+
+
+def _resolve_remote_core(url: str) -> Path:
+    cache, marker = _cache_paths()
+    if _cache_is_fresh(cache, marker, url):
+        return cache
+    try:
+        remote_text = _fetch_catalog_text(url)
+    except RecipeError:
+        if _cache_is_catalog(cache) and _cache_url(marker) == url:
+            return cache
+        return bundled_catalog_path()
+    try:
+        bundled_text = bundled_catalog_path().read_text(encoding="utf-8")
+        resolved = compatible_catalog_text(remote_text, bundled_text)
+    except (OSError, RecipeError):
+        resolved = None
+    if resolved is None:
+        if _cache_is_catalog(cache) and _cache_url(marker) == url:
+            return cache
+        return bundled_catalog_path()
+    _write_cache(cache, marker, url, resolved)
+    return cache
+
+
+def _cache_url(marker: Path) -> str | None:
+    try:
+        return marker.read_text(encoding="utf-8").strip() or None
+    except OSError:
+        return None
 
 
 def parse_catalog(text: str, label: str = "catalog") -> tuple[dict[str, Recipe], dict[str, dict]]:

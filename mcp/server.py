@@ -37,6 +37,7 @@ from abom.cli import (
     cmd_tap_remove,
     cmd_tap_update,
     cmd_unuse,
+    cmd_update,
     cmd_upgrade,
     cmd_use,
 )
@@ -45,6 +46,11 @@ PROTOCOL_VERSION = "2024-11-05"
 SERVER_NAME = "abom"
 
 _TOOLS: list[dict[str, Any]] = [
+    {
+        "name": "update_catalog",
+        "description": "Refresh the remote recipe catalog and private taps. Does not upgrade installed checkouts.",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
     {
         "name": "list_recipes",
         "description": "List abom recipes. Optionally filter by name, kind, or description.",
@@ -375,6 +381,8 @@ def _dispatch(name: str, arguments: dict[str, Any]) -> str:
             _required(arguments, "name"),
             target if isinstance(target, str) else None,
         )
+    if name == "update_catalog":
+        return "\n".join(cmd_update())
     if name == "upgrade_tool":
         name_arg = arguments.get("name")
         lines = cmd_upgrade(name_arg if isinstance(name_arg, str) else None)

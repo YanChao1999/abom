@@ -298,6 +298,18 @@
         "ref": "main",
         "path": "mcp"
       }
+    },
+    {
+      "name": "yanchao-mulation",
+      "kind": "skill",
+      "description": "Wire and run mulation-bot mutation gates on host ELF unit suites.",
+      "homepage": "https://github.com/YanChao1999/mulation-bot",
+      "license": "MIT",
+      "source": {
+        "git": "https://github.com/YanChao1999/mulation-bot.git",
+        "ref": "main",
+        "path": "skills/mulation"
+      }
     }
   ]
 }

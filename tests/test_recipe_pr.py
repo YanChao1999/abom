@@ -57,6 +57,7 @@ def test_pages_build_lists_catalog_recipes() -> None:
     assert "abom add abom-skill" in page
     assert "abom unuse abom-skill" in page
     assert "abom sync" in page
+    assert "abom update" in page
     assert "abom tap add team" in page
     assert "abom lock [--check]" in page
     assert "abom report &lt;name&gt;" in page
@@ -66,7 +67,10 @@ def test_pages_build_lists_catalog_recipes() -> None:
     assert "ABOM-2026-0001" in page
     assert "ABOM-2026-0002" in page
     feed = Path(__file__).resolve().parents[1] / "site" / "advisories.json"
+    catalog = Path(__file__).resolve().parents[1] / "site" / "recipes.json"
     assert feed.is_file()
+    assert catalog.is_file()
+    assert "yanchao-mulation" in catalog.read_text(encoding="utf-8")
     assert "ABOM-2026-0001" in feed.read_text(encoding="utf-8")
     assert "Commands" in page
 

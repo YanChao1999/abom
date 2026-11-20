@@ -47,12 +47,15 @@ from abom.project import (
 from abom.recipe import (
     Recipe,
     RecipeError,
+    bundled_catalog_path,
     catalog_sources,
+    catalog_url,
     format_recipe,
     format_recipe_line,
     iter_recipes,
     load_recipe,
     private_catalogs_dir,
+    refresh_core_catalog,
     validate_git_url,
 )
 from abom.taps import TapError, add_tap, load_tap_entries, remove_tap, update_taps
@@ -866,7 +869,11 @@ def cmd_catalogs() -> list[str]:
     lines = [f"{name}  {path}" for name, path in sources]
     private = private_catalogs_dir()
     lines.append(f"private catalogs dir: {private}")
-    lines.append("trust root: core (bundled public catalog)")
+    core = next((path for name, path in sources if name == "core"), None)
+    if core is not None and core != bundled_catalog_path():
+        lines.append("trust root: core (remote public catalog)")
+    else:
+        lines.append("trust root: core (bundled public catalog)")
     return lines
 
 
@@ -972,8 +979,12 @@ def cmd_audit(lock_file: Path | None = None) -> str:
 
 
 def cmd_tap_list() -> list[str]:
-    lines = ["core  bundled  public trust root"]
     try:
+        url = catalog_url()
+        if url:
+            lines = [f"core  remote  {url}"]
+        else:
+            lines = ["core  bundled  public trust root"]
         for entry in load_tap_entries():
             kind = entry["kind"]
             if kind == "path":
@@ -985,7 +996,7 @@ def cmd_tap_list() -> list[str]:
                     f"{entry['git']}@{entry.get('ref', 'main')}:{entry.get('path', 'recipes.json')}"
                 )
             lines.append(f"{entry['name']}  {kind}  {detail}")
-    except TapError as exc:
+    except (TapError, RecipeError) as exc:
         raise AbomError(str(exc)) from exc
     return lines
 
@@ -1002,6 +1013,17 @@ def cmd_tap_remove(name: str) -> str:
         return remove_tap(name)
     except TapError as exc:
         raise AbomError(str(exc)) from exc
+
+
+def cmd_update() -> list[str]:
+    """Refresh the public catalog and remote taps. Does not upgrade installed checkouts."""
+    try:
+        lines = [refresh_core_catalog()]
+        taps = update_taps()
+    except (RecipeError, TapError) as exc:
+        raise AbomError(str(exc)) from exc
+    lines.extend(line for line in taps if line != "no remote taps to update")
+    return lines
 
 
 def cmd_tap_update(name: str | None = None) -> list[str]:
@@ -1168,6 +1190,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Write MCP config under the home directory",
     )
 
+    sub.add_parser("update", help="Refresh the remote recipe catalog and private taps")
     upgrade_parser = sub.add_parser(
         "upgrade", help="Move installed recipe checkouts to the recipe ref"
     )
@@ -1285,6 +1308,9 @@ def main(argv: list[str] | None = None) -> int:
                     workspace=args.workspace,
                 )
             )
+        elif args.command == "update":
+            for line in cmd_update():
+                print(line)
         elif args.command == "upgrade":
             for line in cmd_upgrade(args.name):
                 print(line)
