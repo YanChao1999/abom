@@ -25,9 +25,13 @@ COMMANDS = [
         "add <name>",
         "Install if needed, wire the nearest workspace, and update abom.lock.json",
     ),
-    ("init [--agent]", "Create .abom/project.json in the nearest workspace"),
+    (
+        "init [--agent name]...",
+        "Create .abom/project.json. Repeat --agent for more than one default",
+    ),
     ("use <name> [target]", "Wire into the nearest workspace from cwd (uv-style)"),
     ("unuse <name>", "Remove project wiring (skills/prompts/mcp + project.json)"),
+    ("update", "Refresh the remote recipe catalog and private taps"),
     ("upgrade [name]", "Move installed checkouts to the recipe ref tip"),
     ("rollback <name>", "Restore the previous receipt commit"),
     (
@@ -69,6 +73,7 @@ def main() -> None:
         )
     SITE.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(ADVISORIES, SITE / "advisories.json")
+    shutil.copyfile(CATALOG, SITE / "recipes.json")
     (SITE / "index.html").write_text(_page(rows, command_rows, advisory_rows), encoding="utf-8")
 
 

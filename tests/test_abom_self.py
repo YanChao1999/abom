@@ -84,6 +84,7 @@ def test_mcp_lists_and_shows_abom_recipes(monkeypatch, tmp_path: Path) -> None:
     listed = server.handle_message({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
     names = [tool["name"] for tool in listed["result"]["tools"]]
     assert "list_recipes" in names
+    assert "update_catalog" in names
     assert "install_recipe" in names
     assert "audit_lock" in names
 

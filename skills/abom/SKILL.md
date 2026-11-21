@@ -1,11 +1,11 @@
 ---
 name: abom
-description: Install, check, use, sync, upgrade, lock, roll back, and tap private catalogs for agent skills, prompts, MCP servers, and packages with the abom CLI. Use when the user wants to add an agent material, wire it into Cursor/Claude/Copilot/Codex paths, pin commits, or overlay a private catalog on the public core trust root.
+description: Install, check, use, sync, update, upgrade, lock, roll back, and tap private catalogs for agent skills, prompts, MCP servers, and packages with the abom CLI. Use when the user wants to add an agent material, refresh the recipe catalog, wire it into Cursor/Claude/Copilot/Codex paths, pin commits, or overlay a private catalog on the public core trust root.
 ---
 
 # abom
 
-abom is the agent bill of materials manager. Recipes live in `src/abom/recipes.json`. Install by recipe name. The git URL stays in the catalog.
+abom is the agent bill of materials manager. Recipes are published from `src/abom/recipes.json` to `https://yanchao1999.github.io/abom/recipes.json`. Installed clients refresh that catalog when the schema is `abom.catalog/v1` and the entry parses; a failed refresh or an entry this client cannot parse keeps the packaged recipe. Install by recipe name. The git URL stays in the catalog.
 
 ## When to use
 
@@ -18,11 +18,12 @@ abom recipes [query]
 abom info <name>
 abom show <name>
 abom check <name>
-abom init
+abom init [--agent cursor] [--agent claude]
 abom add <name>
 abom install <name> [--use --agent cursor]
 abom use <name>
 abom unuse <name>
+abom update
 abom upgrade [name]
 abom lock [--check]
 abom audit
@@ -37,7 +38,7 @@ abom link <name> <target_repo> [--link-name <name>]
 abom remove <name>
 ```
 
-`abom add` stores the recipe ref tip at `$ABOM_HOME/store/<name>/<commit>`, wires the nearest workspace to that tree, and updates `abom.lock.json` (commit, digest, rules version, advisory digest). Two projects can pin different commits; `abom sync` does not remove the other tree. MCP config launches the locked checkout. `abom audit` replays advisories against the lock without reinstalling. Optional `.abom/policy.json` sets allowed licenses, kinds, and required advisory sources. `abom unuse` removes project wiring. Taps accept local JSON, https catalog URLs, or git repos. Advisory feed: `https://yanchao1999.github.io/abom/advisories.json` (`ABOM_ADVISORIES` / `ABOM_ADVISORIES_EXTRA`). `ABOM_HOME` overrides `~/.abom`.
+`abom init --agent cursor --agent claude` records both as the project default. `abom use` and `abom add` wire every recorded agent when `--agent` is omitted. `abom add` stores the recipe ref tip at `$ABOM_HOME/store/<name>/<commit>`, wires the nearest workspace to that tree, and updates `abom.lock.json` (commit, digest, rules version, advisory digest). Two projects can pin different commits; `abom sync` does not remove the other tree. MCP config launches the locked checkout. `abom audit` replays advisories against the lock without reinstalling. Optional `.abom/policy.json` sets allowed licenses, kinds, and required advisory sources. `abom unuse` removes project wiring. Taps accept local JSON, https catalog URLs, or git repos. Advisory feed: `https://yanchao1999.github.io/abom/advisories.json` (`ABOM_ADVISORIES` / `ABOM_ADVISORIES_EXTRA`). `ABOM_HOME` overrides `~/.abom`.
 
 ## Add a recipe
 
@@ -69,4 +70,4 @@ Install this package from GitHub with `pip install git+https://github.com/YanCha
 ## This repo
 
 - `abom-skill` is this skill (`skills/abom`).
-- `abom-mcp` is the stdio MCP server (`mcp/server.py`). Launch it with `python mcp/server.py`. It exposes list, show, check, install, use, upgrade, sync, tap, rollback, search, link, and remove.
+- `abom-mcp` is the stdio MCP server (`mcp/server.py`). Launch it with `python mcp/server.py`. It exposes list, show, check, install, use, update, upgrade, sync, tap, rollback, search, link, and remove.

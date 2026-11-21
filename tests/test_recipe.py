@@ -94,6 +94,7 @@ def test_bundled_catalog_has_one_of_each_kind(tmp_path: Path, monkeypatch) -> No
         "modelcontextprotocol-python-sdk",
         "modelcontextprotocol-sequentialthinking",
         "modelcontextprotocol-time",
+        "yanchao-mulation",
     ]
     assert [line.split("  ")[1] for line in listed] == [
         "mcp",
@@ -121,6 +122,7 @@ def test_bundled_catalog_has_one_of_each_kind(tmp_path: Path, monkeypatch) -> No
         "package",
         "mcp",
         "mcp",
+        "skill",
     ]
 
     info = cmd_info("anthropics-skill-creator")
